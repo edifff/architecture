@@ -2,8 +2,10 @@ package ru.archlabs.chat.http;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import ru.archlabs.chat.Message;
 
 import java.io.IOException;
+import java.util.List;
 
 /** {@code POST /messages/{username}} — отправка, {@code GET} — история. */
 final class MessagesServlet extends ChatServlet {
@@ -17,9 +19,9 @@ final class MessagesServlet extends ChatServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         execute(response, () -> {
-            var connection = connection(request);
-            var body = readBody(request, ChatProtocol.SendMessageRequest.class);
-            var message = connection.session().send(body.text());
+            ClientConnection connection = connection(request);
+            ChatProtocol.SendMessageRequest body = readBody(request, ChatProtocol.SendMessageRequest.class);
+            Message message = connection.session().send(body.text());
             writeJson(response, 201, ChatProtocol.MessagePayload.from(message));
         });
     }
@@ -28,18 +30,15 @@ final class MessagesServlet extends ChatServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         execute(response, () -> {
-            var connection = connection(request);
-            var history = connection.session().history();
-            writeJson(
-                    response,
-                    200,
-                    history.stream().map(ChatProtocol.MessagePayload::from).toList());
+            ClientConnection connection = connection(request);
+            List<Message> history = connection.session().history();
+            writeJson(response, 200, history.stream().map(ChatProtocol.MessagePayload::from).toList());
         });
     }
 
     private ClientConnection connection(HttpServletRequest request) {
-        var username = username(request);
-        var connection = server.connection(username);
+        String username = username(request);
+        ClientConnection connection = server.connection(username);
         if (connection == null) {
             throw new IllegalStateException("Session is not active: " + username);
         }

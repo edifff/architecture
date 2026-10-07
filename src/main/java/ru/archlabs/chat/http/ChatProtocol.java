@@ -48,8 +48,7 @@ public final class ChatProtocol {
     /** Сообщение в сети. Время передаётся строкой ISO-8601. */
     public record MessagePayload(long id, String sender, String text, String sentAt) {
         public static MessagePayload from(Message message) {
-            return new MessagePayload(
-                    message.id(), message.sender(), message.text(), message.sentAt().toString());
+            return new MessagePayload(message.id(), message.sender(), message.text(), message.sentAt().toString());
         }
 
         public Message toMessage() {
@@ -58,8 +57,7 @@ public final class ChatProtocol {
     }
 
     /** Состояние пользователя в сети. */
-    public record UserPayload(
-            String name, boolean online, String lastConnected, boolean notificationsEnabled) {
+    public record UserPayload(String name, boolean online, String lastConnected, boolean notificationsEnabled) {
         public static UserPayload from(UserState state) {
             return new UserPayload(
                     state.name(),

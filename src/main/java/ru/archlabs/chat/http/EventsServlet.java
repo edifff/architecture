@@ -2,6 +2,7 @@ package ru.archlabs.chat.http;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import ru.archlabs.chat.Message;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -29,7 +30,7 @@ final class EventsServlet extends ChatServlet {
             return;
         }
 
-        var connection = server.connection(name);
+        ClientConnection connection = server.connection(name);
         if (connection == null) {
             error(response, 404, "Unknown user: " + name);
             return;
@@ -39,7 +40,7 @@ final class EventsServlet extends ChatServlet {
         response.setContentType(ChatProtocol.CONTENT_TYPE_EVENT_STREAM);
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-cache");
-        var writer = response.getWriter();
+        PrintWriter writer = response.getWriter();
         writer.write(": connected\n\n");
         writer.flush();
 
@@ -50,10 +51,9 @@ final class EventsServlet extends ChatServlet {
         }
     }
 
-    private static void stream(ClientConnection connection, PrintWriter writer)
-            throws InterruptedException {
+    private static void stream(ClientConnection connection, PrintWriter writer) throws InterruptedException {
         while (!writer.checkError()) {
-            var message = connection.pending().poll(KEEP_ALIVE_MILLIS, TimeUnit.MILLISECONDS);
+            Message message = connection.pending().poll(KEEP_ALIVE_MILLIS, TimeUnit.MILLISECONDS);
             if (message == null) {
                 writer.write(": keep-alive\n\n");
             } else {

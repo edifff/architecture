@@ -37,8 +37,7 @@ public final class ChatJson {
 
     public static <T> List<T> readList(String json, Class<T> type) {
         try {
-            CollectionType collectionType =
-                    MAPPER.getTypeFactory().constructCollectionType(List.class, type);
+            CollectionType collectionType = MAPPER.getTypeFactory().constructCollectionType(List.class, type);
             return MAPPER.readValue(json, collectionType);
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Cannot parse JSON list", exception);

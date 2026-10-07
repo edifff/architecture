@@ -16,7 +16,7 @@ final class UserServlet extends ChatServlet {
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
-            var username = username(request);
+            String username = username(request);
             ChatProtocol.UserPayload payload;
             try {
                 payload = ChatProtocol.UserPayload.from(server.user(username));

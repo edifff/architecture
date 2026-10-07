@@ -4,6 +4,7 @@ import ru.archlabs.chat.ChatSession;
 import ru.archlabs.chat.Message;
 
 import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,20 +26,17 @@ final class HttpChatSession implements ChatSession {
     HttpChatSession(HttpChatClient client, String username, Consumer<Message> onMessage) {
         this.client = client;
         this.username = username;
-        this.events =
-                Executors.newSingleThreadExecutor(
-                        runnable -> {
-                            var thread = new Thread(runnable, "chat-events-" + username);
+        this.events = Executors.newSingleThreadExecutor(runnable -> {
+                            Thread thread = new Thread(runnable, "chat-events-" + username);
                             thread.setDaemon(true);
-                            return thread;
-                        });
+                            return thread;});
         startEvents(onMessage);
     }
 
     @Override
     public Message send(String text) {
         ensureOpen();
-        var response = client.post(path("/messages/"), new ChatProtocol.SendMessageRequest(text));
+        HttpResponse<String> response = client.post(path("/messages/"), new ChatProtocol.SendMessageRequest(text));
         client.expect(response, 201, "send message");
         return ChatJson.read(response.body(), ChatProtocol.MessagePayload.class).toMessage();
     }
@@ -46,17 +44,14 @@ final class HttpChatSession implements ChatSession {
     @Override
     public void setNotificationsEnabled(boolean enabled) {
         ensureOpen();
-        var response =
-                client.put(
-                        path("/notifications/"),
-                        new ChatProtocol.NotificationsRequest(enabled));
+        HttpResponse<String> response = client.put(path("/notifications/"), new ChatProtocol.NotificationsRequest(enabled));
         client.expect(response, 204, "set notifications");
     }
 
     @Override
     public List<Message> history() {
         ensureOpen();
-        var response = client.get(path("/messages/"));
+        HttpResponse<String> response = client.get(path("/messages/"));
         client.expect(response, 200, "read history");
         return ChatJson.readList(response.body(), ChatProtocol.MessagePayload.class).stream()
                 .map(ChatProtocol.MessagePayload::toMessage)
@@ -81,17 +76,14 @@ final class HttpChatSession implements ChatSession {
     }
 
     private void startEvents(Consumer<Message> onMessage) {
-        var request =
-                HttpRequest.newBuilder(client.resolve(path("/events/")))
+        HttpRequest request = HttpRequest.newBuilder(client.resolve(path("/events/")))
                         .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
                         .GET()
                         .build();
         eventStream = client.sendStream(request).body();
-        events.submit(
-                () -> {
+        events.submit(() -> {
                     try {
-                        eventStream.forEach(
-                                line -> {
+                        eventStream.forEach(line -> {
                                     try {
                                         accept(line, onMessage);
                                     } catch (RuntimeException ignored) {
@@ -106,7 +98,7 @@ final class HttpChatSession implements ChatSession {
 
     private static void accept(String line, Consumer<Message> onMessage) {
         if (line.startsWith(ChatProtocol.DATA_PREFIX)) {
-            var json = line.substring(ChatProtocol.DATA_PREFIX.length()).trim();
+            String json = line.substring(ChatProtocol.DATA_PREFIX.length()).trim();
             onMessage.accept(
                     ChatJson.read(json, ChatProtocol.MessagePayload.class).toMessage());
         }

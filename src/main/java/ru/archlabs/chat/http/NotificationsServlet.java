@@ -16,12 +16,12 @@ final class NotificationsServlet extends ChatServlet {
     @Override
     protected void doPut(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
-            var username = username(request);
-            var connection = server.connection(username);
+            String username = username(request);
+            ClientConnection connection = server.connection(username);
             if (connection == null) {
                 throw new IllegalStateException("Session is not active: " + username);
             }
-            var body = readBody(request, ChatProtocol.NotificationsRequest.class);
+            ChatProtocol.NotificationsRequest body = readBody(request, ChatProtocol.NotificationsRequest.class);
             connection.session().setNotificationsEnabled(body.enabled());
             response.setStatus(204);
         });

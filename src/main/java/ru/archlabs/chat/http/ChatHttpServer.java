@@ -25,8 +25,7 @@ public final class ChatHttpServer implements AutoCloseable {
 
     public ChatHttpServer(ChatServer chat, int port) {
         this.chat = Objects.requireNonNull(chat, "chat");
-        this.metrics =
-                chat instanceof ChatMetrics.Source source ? source.metrics() : new ChatMetrics();
+        this.metrics = chat instanceof ChatMetrics.Source source ? source.metrics() : new ChatMetrics();
         this.server = new Server(port);
 
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS);

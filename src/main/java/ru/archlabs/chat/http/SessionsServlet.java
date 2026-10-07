@@ -14,20 +14,18 @@ final class SessionsServlet extends ChatServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
-            var username = username(request);
+            String username = username(request);
             server.connect(username);
             writeJson(response, 201, new ChatProtocol.SessionPayload(username));
         });
     }
 
     @Override
-    protected void doDelete(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    protected void doDelete(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
-            var username = username(request);
+            String username = username(request);
             server.disconnect(username);
             response.setStatus(204);
         });

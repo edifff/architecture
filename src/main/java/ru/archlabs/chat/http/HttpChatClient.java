@@ -37,9 +37,7 @@ public final class HttpChatClient implements ChatServer {
     public ChatSession connect(String username, Consumer<Message> onMessage) {
         Objects.requireNonNull(username, "username");
         Objects.requireNonNull(onMessage, "onMessage");
-        var response =
-                send(
-                        builder("/sessions/" + encode(username))
+        HttpResponse<String> response = send(builder("/sessions/" + encode(username))
                                 .POST(HttpRequest.BodyPublishers.noBody())
                                 .build());
         expect(response, 201, "connect");
@@ -51,7 +49,7 @@ public final class HttpChatClient implements ChatServer {
     @Override
     public UserState user(String username) {
         Objects.requireNonNull(username, "username");
-        var response = get("/users/" + encode(username));
+        HttpResponse<String> response = get("/users/" + encode(username));
         if (response.statusCode() == 404) {
             throw new IllegalArgumentException("Unknown user: " + username);
         }
@@ -61,7 +59,7 @@ public final class HttpChatClient implements ChatServer {
 
     @Override
     public void close() {
-        for (var session : List.copyOf(sessions)) {
+        for (HttpChatSession session : List.copyOf(sessions)) {
             session.close();
         }
         client.close();
@@ -91,22 +89,16 @@ public final class HttpChatClient implements ChatServer {
     }
 
     HttpResponse<String> post(String path, Object body) {
-        return send(
-                builder(path)
+        return send(builder(path)
                         .header("Content-Type", ChatProtocol.CONTENT_TYPE_JSON)
-                        .POST(
-                                HttpRequest.BodyPublishers.ofString(
-                                        ChatJson.write(body), StandardCharsets.UTF_8))
+                        .POST(HttpRequest.BodyPublishers.ofString(ChatJson.write(body), StandardCharsets.UTF_8))
                         .build());
     }
 
     HttpResponse<String> put(String path, Object body) {
-        return send(
-                builder(path)
+        return send(builder(path)
                         .header("Content-Type", ChatProtocol.CONTENT_TYPE_JSON)
-                        .PUT(
-                                HttpRequest.BodyPublishers.ofString(
-                                        ChatJson.write(body), StandardCharsets.UTF_8))
+                        .PUT(HttpRequest.BodyPublishers.ofString(ChatJson.write(body), StandardCharsets.UTF_8))
                         .build());
     }
 
@@ -118,8 +110,8 @@ public final class HttpChatClient implements ChatServer {
         if (response.statusCode() == status) {
             return;
         }
-        var message = errorMessage(response);
-        var code = response.statusCode();
+        String message = errorMessage(response);
+        int code = response.statusCode();
         if (code == 409) {
             throw new IllegalStateException(message);
         }
