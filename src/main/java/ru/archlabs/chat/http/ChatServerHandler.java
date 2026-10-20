@@ -15,6 +15,7 @@ import ru.archlabs.chat.Message;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -177,6 +178,9 @@ final class ChatServerHandler extends SimpleChannelInboundHandler<FullHttpReques
         writeChunk(ctx, ": connected\n\n");
         lastWriteNanos = System.nanoTime();
 
+        // Отменяем предыдущую задачу выдачи (если поток уже был открыт на этом соединении),
+        // иначе она навсегда утекла бы в event loop и полла бы мёртвый канал.
+        cancelSse();
         sseTask =
                 ctx.executor()
                         .scheduleWithFixedDelay(
@@ -236,21 +240,31 @@ final class ChatServerHandler extends SimpleChannelInboundHandler<FullHttpReques
         return request.content().toString(StandardCharsets.UTF_8);
     }
 
+    private static final Set<String> SECTIONS =
+            Set.of("sessions", "users", "messages", "notifications", "events");
+
     private static Route route(String path) {
-        if (path == null || path.length() <= 1 || !path.startsWith("/")) {
+        if (path == null || !path.startsWith("/") || path.length() <= 1) {
             return null;
         }
         var parts = path.substring(1).split("/", -1);
+        if (parts.length == 1) {
+            // /users — известная секция без пользователя: это ошибка входных данных, а не
+            // неизвестный маршрут (как в прежних сервлетах, где pathInfo был пуст).
+            if (SECTIONS.contains(parts[0])) {
+                throw new IllegalArgumentException("Username must not be blank");
+            }
+            return null;
+        }
         if (parts.length != 2) {
             return null;
         }
         var section = parts[0];
         var username = parts[1];
-        if (section.isEmpty() || username.isEmpty()) {
-            // Пустой пользователь — не «неизвестный маршрут», а ошибка входных данных.
-            if (section.isEmpty()) {
-                return null;
-            }
+        if (!SECTIONS.contains(section)) {
+            return null;
+        }
+        if (username.isBlank()) {
             throw new IllegalArgumentException("Username must not be blank");
         }
         return new Route(section, username);

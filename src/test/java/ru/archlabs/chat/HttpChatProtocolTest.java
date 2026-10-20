@@ -201,6 +201,29 @@ final class HttpChatProtocolTest {
     }
 
     @Test
+    void missingUsernameReturnsBadRequest() throws Exception {
+        var response = get("/users");
+        assertEquals(400, response.statusCode());
+        assertEquals(
+                "Username must not be blank",
+                ChatJson.read(response.body(), ChatProtocol.ErrorPayload.class).error());
+    }
+
+    @Test
+    void whitespaceUsernameReturnsBadRequest() throws Exception {
+        var response = get("/users/%20");
+        assertEquals(400, response.statusCode());
+        assertEquals(
+                "Username must not be blank",
+                ChatJson.read(response.body(), ChatProtocol.ErrorPayload.class).error());
+    }
+
+    @Test
+    void unknownSectionWithEmptyUsernameReturnsNotFound() throws Exception {
+        assertEquals(404, get("/nonsense/").statusCode());
+    }
+
+    @Test
     void blankUsernameReturnsBadRequest() throws Exception {
         var response = get("/users/");
         assertEquals(400, response.statusCode());
