@@ -1,52 +1,78 @@
 package ru.archlabs.chat.http;
 
-import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
-import org.eclipse.jetty.ee10.servlet.ServletHolder;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.ServerConnector;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpServerCodec;
 import ru.archlabs.chat.ChatMetrics;
 import ru.archlabs.chat.ChatServer;
 import ru.archlabs.chat.UserState;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-
+/**
+ * HTTP-сервер чата на Netty. Публичный интерфейс ({@code start}, {@code baseUri},
+ * {@code close}) и операции {@code connect}/{@code disconnect}/{@code connection}/{@code user}
+ * не изменились; вместо Jetty и сервлетов запросы обрабатывает {@link ChatServerHandler}.
+ */
 public final class ChatHttpServer implements AutoCloseable {
     private final ChatServer chat;
     private final ChatMetrics metrics;
-    private final Server server;
+    private final int port;
+    private final MultiThreadIoEventLoopGroup bossGroup;
+    private final MultiThreadIoEventLoopGroup workerGroup;
+    private final ServerBootstrap bootstrap;
     private final Map<String, ClientConnection> connections = new ConcurrentHashMap<>();
+    private volatile Channel serverChannel;
 
     public ChatHttpServer(ChatServer chat, int port) {
         this.chat = Objects.requireNonNull(chat, "chat");
+        this.port = port;
         this.metrics = chat instanceof ChatMetrics.Source source ? source.metrics() : new ChatMetrics();
-        this.server = new Server(port);
-
-        ServletContextHandler context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS);
-        context.setContextPath("/");
-        context.addServlet(new ServletHolder(new SessionsServlet(this)), "/sessions/*");
-        context.addServlet(new ServletHolder(new UserServlet(this)), "/users/*");
-        context.addServlet(new ServletHolder(new MessagesServlet(this)), "/messages/*");
-        context.addServlet(new ServletHolder(new NotificationsServlet(this)), "/notifications/*");
-        context.addServlet(new ServletHolder(new EventsServlet(this)), "/events/*");
-        context.addServlet(new ServletHolder(new MetricsServlet(metrics)), "/metrics");
-        server.setHandler(context);
+        this.bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+        this.workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+        this.bootstrap =
+                new ServerBootstrap()
+                        .group(bossGroup, workerGroup)
+                        .channel(NioServerSocketChannel.class)
+                        .childHandler(
+                                new ChannelInitializer<SocketChannel>() {
+                                    @Override
+                                    protected void initChannel(SocketChannel channel) {
+                                        channel
+                                                .pipeline()
+                                                .addLast(
+                                                        new HttpServerCodec(),
+                                                        new HttpObjectAggregator(1 << 20),
+                                                        new ChatServerHandler(ChatHttpServer.this));
+                                    }
+                                });
     }
 
     public void start() throws Exception {
-        server.start();
+        serverChannel = bootstrap.bind(port).sync().channel();
     }
 
     public URI baseUri() {
-        ServerConnector connector = (ServerConnector) server.getConnectors()[0];
-        return URI.create("http://localhost:" + connector.getLocalPort());
+        var address = (InetSocketAddress) serverChannel.localAddress();
+        return URI.create("http://localhost:" + address.getPort());
     }
 
     public ChatServer chat() {
         return chat;
+    }
+
+    ChatMetrics metrics() {
+        return metrics;
     }
 
     synchronized ClientConnection connect(String username) {
@@ -78,8 +104,12 @@ public final class ChatHttpServer implements AutoCloseable {
     @Override
     public void close() {
         try {
-            server.stop();
-        } catch (Exception exception) {
+            if (serverChannel != null) {
+                serverChannel.close().syncUninterruptibly();
+            }
+            bossGroup.shutdownGracefully().syncUninterruptibly();
+            workerGroup.shutdownGracefully().syncUninterruptibly();
+        } catch (RuntimeException exception) {
             throw new IllegalStateException("Cannot stop HTTP chat server", exception);
         }
         chat.close();

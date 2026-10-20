@@ -15,8 +15,6 @@
         <flyway.version>10.20.1</flyway.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <netty.version>4.2.19.Final</netty.version>
-        <slf4j.version>2.0.16</slf4j.version>
-        <jetty.version>12.0.40</jetty.version>
         <jackson.version>2.18.11</jackson.version>
         <prometheus.version>1.4.3</prometheus.version>
     </properties>
@@ -46,11 +44,6 @@
             <version>${netty.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.eclipse.jetty.ee10</groupId>
-            <artifactId>jetty-ee10-servlet</artifactId>
-            <version>${jetty.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
@@ -66,19 +59,6 @@
             <groupId>io.prometheus</groupId>
             <artifactId>prometheus-metrics-exposition-textformats</artifactId>
             <version>${prometheus.version}</version>
-        </dependency>
-
-        <dependency>
-            <!-- Jetty 12 логирует через SLF4J, поэтому библиотека нужна и в рантайме
-                 (не только в тестах). slf4j-simple даёт простую консольную запись. -->
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
 
         <dependency>

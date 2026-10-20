@@ -20,6 +20,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -192,6 +193,67 @@ final class HttpChatProtocolTest {
         assertTrue(body.contains("chat_requests_total{operation=\"send\"} 1.0"));
         assertTrue(body.contains("chat_notifications_total"));
         assertTrue(body.contains("chat_notifications_total{channel=\"live\"} 2.0"));
+    }
+
+    @Test
+    void unknownRouteReturnsNotFound() throws Exception {
+        assertEquals(404, get("/nonsense").statusCode());
+    }
+
+    @Test
+    void blankUsernameReturnsBadRequest() throws Exception {
+        var response = get("/users/");
+        assertEquals(400, response.statusCode());
+        assertEquals(
+                "Username must not be blank",
+                ChatJson.read(response.body(), ChatProtocol.ErrorPayload.class).error());
+    }
+
+    @Test
+    void eventsStreamSendsKeepAliveWhenIdle() throws Exception {
+        post("/sessions/ivan", "");
+
+        var request =
+                HttpRequest.newBuilder(base.resolve("/events/ivan"))
+                        .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
+                        .GET()
+                        .build();
+        var lines = client.send(request, HttpResponse.BodyHandlers.ofLines()).body();
+        try {
+            var executor = Executors.newSingleThreadExecutor();
+            try {
+                var reader =
+                        executor.submit(
+                                () -> lines.filter(line -> line.equals(": keep-alive")).findFirst());
+                assertTrue(
+                        reader.get(16, TimeUnit.SECONDS).isPresent(),
+                        "expected : keep-alive within 16s");
+            } finally {
+                executor.shutdownNow();
+            }
+        } finally {
+            lines.close();
+        }
+    }
+
+    @Test
+    void eventsStreamCancellationDoesNotThrow() throws Exception {
+        post("/sessions/ivan", "");
+
+        var request =
+                HttpRequest.newBuilder(base.resolve("/events/ivan"))
+                        .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
+                        .GET()
+                        .build();
+        var stream = client.send(request, HttpResponse.BodyHandlers.ofLines()).body();
+        try {
+            assertTrue(stream.findFirst().isPresent(), "expected the initial : connected comment");
+        } finally {
+            stream.close();
+        }
+
+        // Сервер не падает и отвечает на следующий запрос после обрыва SSE-клиента.
+        assertEquals(200, get("/users/ivan").statusCode());
     }
 
     private Stream<String> openEvents(
