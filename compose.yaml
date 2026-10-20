@@ -1,7 +1,6 @@
 name: arch-labs
 
-# docker compose up --build        — PostgreSQL + чат-сервер
-# docker compose --profile build run --rm builder   — собрать target/chat.jar
+# docker compose up --build        — PostgreSQL + чат-сервер (jar собирается в Dockerfile)
 # docker compose --profile test run --rm tests      — прогнать тесты в контейнере
 
 services:
@@ -12,11 +11,8 @@ services:
       POSTGRES_USER: chat
       POSTGRES_PASSWORD: chat
     ports:
-      # На хосте 5433, чтобы не конфликтовать с локальным PostgreSQL.
       - "5433:5432"
     volumes:
-      # Именованный том: данные переживают `docker compose down`/`restart` и
-      # удаляются только вместе с ним (`docker compose down -v`).
       - chat-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U chat -d chat"]
@@ -38,28 +34,7 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
-  # Сборка jar. Нужен доступ к Docker-демону хоста, так как jOOQ-кодогенерация
-  # сама запускает контейнер PostgreSQL.
-  builder:
-    image: maven:3.9-eclipse-temurin-25
-    user: "${UID:-1000}:${GID:-1000}"
-    group_add:
-      - "${DOCKER_GID:-1001}"
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      HOME: /workspace
-      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
-      TESTCONTAINERS_RYUK_DISABLED: "true"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: mvn -B -ntp -Dmaven.repo.local=/workspace/.m2-repository -Dmaven.test.skip=true package
-    profiles: ["build"]
 
-  # Тесты в отдельном контейнере против настоящего PostgreSQL, который
-  # Testcontainers поднимает через тот же Docker-демон хоста.
   tests:
     image: maven:3.9-eclipse-temurin-25
     user: "${UID:-1000}:${GID:-1000}"

@@ -32,7 +32,6 @@ abstract class ChatServlet extends HttpServlet {
         }
     }
 
-    /** Возвращает имя пользователя из пути вида {@code /{username}}. */
     protected static String username(HttpServletRequest request) {
         String path = request.getPathInfo();
         if (path == null || path.length() <= 1) {

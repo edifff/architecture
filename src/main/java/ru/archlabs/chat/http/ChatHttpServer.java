@@ -13,10 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Встроенный HTTP-сервер чата на Jetty. Принимает сообщения сервлетами
- * (Java Servlet API) и перенаправляет их в {@link ChatServer}.
- */
+
 public final class ChatHttpServer implements AutoCloseable {
     private final ChatServer chat;
     private final ChatMetrics metrics;

@@ -1,32 +1,28 @@
 package ru.archlabs.chat.storage;
 
 import org.flywaydb.core.Flyway;
-import org.jooq.DSLContext;
-import org.jooq.SQLDialect;
-import org.jooq.exception.DataAccessException;
-import org.jooq.impl.DSL;
 import ru.archlabs.chat.Message;
 import ru.archlabs.chat.UserState;
-import ru.archlabs.chat.db.tables.records.UsersRecord;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
-
-import static ru.archlabs.chat.db.Tables.MESSAGES;
-import static ru.archlabs.chat.db.Tables.NOTIFICATIONS;
-import static ru.archlabs.chat.db.Tables.USERS;
+import java.util.stream.Collectors;
 
 public final class PostgresChatStorage implements ChatStorage {
+    private static final String SELECT_USER_COLUMNS =
+            "SELECT name, online, last_connected, notifications_enabled FROM users ";
+
     private final Connection connection;
-    private final DSLContext dsl;
 
     public PostgresChatStorage(String jdbcUrl, String username, String password) {
         migrate(jdbcUrl, username, password);
@@ -35,7 +31,6 @@ public final class PostgresChatStorage implements ChatStorage {
         } catch (SQLException exception) {
             throw failure("open PostgreSQL chat storage", exception);
         }
-        dsl = DSL.using(connection, SQLDialect.POSTGRES);
         resetOnlineUsers();
     }
 
@@ -43,26 +38,40 @@ public final class PostgresChatStorage implements ChatStorage {
     public void connect(String name, Instant at) {
         transaction(
                 () -> {
-                    var existing =
-                            dsl.selectFrom(USERS).where(USERS.NAME.eq(name)).fetchOptional();
-                    if (existing.isPresent()) {
-                        if (Boolean.TRUE.equals(existing.orElseThrow().getOnline())) {
-                            throw new IllegalStateException("User is already online: " + name);
+                    try (var statement =
+                            connection.prepareStatement(
+                                    SELECT_USER_COLUMNS + "WHERE name = ?")) {
+                        statement.setString(1, name);
+                        try (var resultSet = statement.executeQuery()) {
+                            if (resultSet.next()) {
+                                if (resultSet.getBoolean("online")) {
+                                    throw new IllegalStateException(
+                                            "User is already online: " + name);
+                                }
+                                try (var update =
+                                        connection.prepareStatement(
+                                                "UPDATE users SET online = ?, last_connected = ?"
+                                                        + " WHERE name = ?")) {
+                                    update.setBoolean(1, true);
+                                    update.setObject(2, utc(at));
+                                    update.setString(3, name);
+                                    update.executeUpdate();
+                                }
+                            } else {
+                                try (var insert =
+                                        connection.prepareStatement(
+                                                "INSERT INTO users"
+                                                        + " (name, online, last_connected,"
+                                                        + " notifications_enabled)"
+                                                        + " VALUES (?, ?, ?, ?)")) {
+                                    insert.setString(1, name);
+                                    insert.setBoolean(2, true);
+                                    insert.setObject(3, utc(at));
+                                    insert.setBoolean(4, true);
+                                    insert.executeUpdate();
+                                }
+                            }
                         }
-                        dsl.update(USERS)
-                                .set(USERS.ONLINE, true)
-                                .set(USERS.LAST_CONNECTED, utc(at))
-                                .where(USERS.NAME.eq(name))
-                                .execute();
-                    } else {
-                        dsl.insertInto(USERS)
-                                .columns(
-                                        USERS.NAME,
-                                        USERS.ONLINE,
-                                        USERS.LAST_CONNECTED,
-                                        USERS.NOTIFICATIONS_ENABLED)
-                                .values(name, true, utc(at), true)
-                                .execute();
                     }
                     return null;
                 });
@@ -72,13 +81,15 @@ public final class PostgresChatStorage implements ChatStorage {
     public void disconnect(String name, Instant at) {
         transaction(
                 () -> {
-                    var updated =
-                            dsl.update(USERS)
-                                    .set(USERS.ONLINE, false)
-                                    .set(USERS.LAST_CONNECTED, utc(at))
-                                    .where(USERS.NAME.eq(name))
-                                    .execute();
-                    requireUpdated(updated, name);
+                    try (var statement =
+                            connection.prepareStatement(
+                                    "UPDATE users SET online = ?, last_connected = ?"
+                                            + " WHERE name = ?")) {
+                        statement.setBoolean(1, false);
+                        statement.setObject(2, utc(at));
+                        statement.setString(3, name);
+                        requireUpdated(statement.executeUpdate(), name);
+                    }
                     return null;
                 });
     }
@@ -87,12 +98,13 @@ public final class PostgresChatStorage implements ChatStorage {
     public void setNotificationsEnabled(String name, boolean enabled) {
         transaction(
                 () -> {
-                    var updated =
-                            dsl.update(USERS)
-                                    .set(USERS.NOTIFICATIONS_ENABLED, enabled)
-                                    .where(USERS.NAME.eq(name))
-                                    .execute();
-                    requireUpdated(updated, name);
+                    try (var statement =
+                            connection.prepareStatement(
+                                    "UPDATE users SET notifications_enabled = ? WHERE name = ?")) {
+                        statement.setBoolean(1, enabled);
+                        statement.setString(2, name);
+                        requireUpdated(statement.executeUpdate(), name);
+                    }
                     return null;
                 });
     }
@@ -102,52 +114,54 @@ public final class PostgresChatStorage implements ChatStorage {
         var storedAt = utc(sentAt);
         return transaction(
                 () -> {
-                    var record =
-                            dsl.insertInto(MESSAGES)
-                                    .columns(MESSAGES.SENDER, MESSAGES.TEXT, MESSAGES.SENT_AT)
-                                    .values(sender, text, storedAt)
-                                    .returning(MESSAGES.ID)
-                                    .fetchOne();
-                    if (record == null) {
-                        throw new StorageException("PostgreSQL did not return a message ID");
+                    long id;
+                    try (var statement =
+                            connection.prepareStatement(
+                                    "INSERT INTO messages (sender, text, sent_at)"
+                                            + " VALUES (?, ?, ?) RETURNING id")) {
+                        statement.setString(1, sender);
+                        statement.setString(2, text);
+                        statement.setObject(3, storedAt);
+                        try (var resultSet = statement.executeQuery()) {
+                            if (!resultSet.next()) {
+                                throw new StorageException(
+                                        "PostgreSQL did not return a message ID");
+                            }
+                            id = resultSet.getLong(1);
+                        }
                     }
-                    // Оповещения для offline-пользователей сохраняются вместе с сообщением:
-                    // они переживут аварийное завершение и будут выданы при подключении.
-                    dsl.insertInto(NOTIFICATIONS)
-                            .columns(
-                                    NOTIFICATIONS.RECIPIENT,
-                                    NOTIFICATIONS.MESSAGE_ID,
-                                    NOTIFICATIONS.CREATED_AT)
-                            .select(
-                                    dsl.select(
-                                                    USERS.NAME,
-                                                    DSL.inline(record.getId()),
-                                                    DSL.inline(storedAt))
-                                            .from(USERS)
-                                            .where(USERS.ONLINE.isFalse())
-                                            .and(USERS.NOTIFICATIONS_ENABLED.isTrue()))
-                            .execute();
-                    return new Message(record.getId(), sender, text, storedAt.toInstant());
+                    try (var statement =
+                            connection.prepareStatement(
+                                    "INSERT INTO notifications (recipient, message_id, created_at)"
+                                            + " SELECT name, ?, ? FROM users"
+                                            + " WHERE online = ? AND notifications_enabled = ?")) {
+                        statement.setLong(1, id);
+                        statement.setObject(2, storedAt);
+                        statement.setBoolean(3, false);
+                        statement.setBoolean(4, true);
+                        statement.executeUpdate();
+                    }
+                    return new Message(id, sender, text, storedAt.toInstant());
                 });
     }
 
     @Override
     public List<Message> undeliveredNotifications(String recipient) {
-        try {
-            return dsl.select(MESSAGES.ID, MESSAGES.SENDER, MESSAGES.TEXT, MESSAGES.SENT_AT)
-                    .from(NOTIFICATIONS)
-                    .join(MESSAGES)
-                    .on(MESSAGES.ID.eq(NOTIFICATIONS.MESSAGE_ID))
-                    .where(NOTIFICATIONS.RECIPIENT.eq(recipient))
-                    .orderBy(MESSAGES.ID)
-                    .fetch(
-                            record ->
-                                    new Message(
-                                            record.get(MESSAGES.ID),
-                                            record.get(MESSAGES.SENDER),
-                                            record.get(MESSAGES.TEXT),
-                                            record.get(MESSAGES.SENT_AT).toInstant()));
-        } catch (DataAccessException exception) {
+        try (var statement =
+                connection.prepareStatement(
+                        "SELECT m.id, m.sender, m.text, m.sent_at"
+                                + " FROM notifications n"
+                                + " JOIN messages m ON m.id = n.message_id"
+                                + " WHERE n.recipient = ? ORDER BY m.id")) {
+            statement.setString(1, recipient);
+            try (var resultSet = statement.executeQuery()) {
+                var messages = new ArrayList<Message>();
+                while (resultSet.next()) {
+                    messages.add(toMessage(resultSet));
+                }
+                return messages;
+            }
+        } catch (SQLException exception) {
             throw failure("read undelivered notifications", exception);
         }
     }
@@ -159,51 +173,73 @@ public final class PostgresChatStorage implements ChatStorage {
         }
         transaction(
                 () -> {
-                    dsl.deleteFrom(NOTIFICATIONS)
-                            .where(NOTIFICATIONS.RECIPIENT.eq(recipient))
-                            .and(NOTIFICATIONS.MESSAGE_ID.in(messageIds))
-                            .execute();
+                    var placeholders =
+                            messageIds.stream().map(id -> "?").collect(Collectors.joining(", "));
+                    try (var statement =
+                            connection.prepareStatement(
+                                    "DELETE FROM notifications"
+                                            + " WHERE recipient = ? AND message_id IN ("
+                                            + placeholders
+                                            + ")")) {
+                        statement.setString(1, recipient);
+                        for (int i = 0; i < messageIds.size(); i++) {
+                            statement.setLong(i + 2, messageIds.get(i));
+                        }
+                        statement.executeUpdate();
+                    }
                     return null;
                 });
     }
 
     @Override
     public List<Message> history() {
-        try {
-            return dsl.selectFrom(MESSAGES)
-                    .orderBy(MESSAGES.ID)
-                    .fetch(
-                            record ->
-                                    new Message(
-                                            record.getId(),
-                                            record.getSender(),
-                                            record.getText(),
-                                            record.getSentAt().toInstant()));
-        } catch (DataAccessException exception) {
+        try (var statement =
+                connection.prepareStatement("SELECT id, sender, text, sent_at FROM messages"
+                        + " ORDER BY id");
+                var resultSet = statement.executeQuery()) {
+            var messages = new ArrayList<Message>();
+            while (resultSet.next()) {
+                messages.add(toMessage(resultSet));
+            }
+            return messages;
+        } catch (SQLException exception) {
             throw failure("read message history", exception);
         }
     }
 
     @Override
     public Optional<UserState> user(String name) {
-        try {
-            return dsl.selectFrom(USERS)
-                    .where(USERS.NAME.eq(name))
-                    .fetchOptional(PostgresChatStorage::toUserState);
-        } catch (DataAccessException exception) {
+        try (var statement =
+                connection.prepareStatement(SELECT_USER_COLUMNS + "WHERE name = ?")) {
+            statement.setString(1, name);
+            try (var resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return Optional.of(toUserState(resultSet));
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException exception) {
             throw failure("read user", exception);
         }
     }
 
     @Override
     public List<UserState> onlineUsersWithNotificationsEnabled() {
-        try {
-            return dsl.selectFrom(USERS)
-                    .where(USERS.ONLINE.isTrue())
-                    .and(USERS.NOTIFICATIONS_ENABLED.isTrue())
-                    .orderBy(USERS.NAME)
-                    .fetch(PostgresChatStorage::toUserState);
-        } catch (DataAccessException exception) {
+        try (var statement =
+                connection.prepareStatement(
+                        SELECT_USER_COLUMNS
+                                + "WHERE online = ? AND notifications_enabled = ?"
+                                + " ORDER BY name")) {
+            statement.setBoolean(1, true);
+            statement.setBoolean(2, true);
+            try (var resultSet = statement.executeQuery()) {
+                var users = new ArrayList<UserState>();
+                while (resultSet.next()) {
+                    users.add(toUserState(resultSet));
+                }
+                return users;
+            }
+        } catch (SQLException exception) {
             throw failure("read online users", exception);
         }
     }
@@ -218,18 +254,25 @@ public final class PostgresChatStorage implements ChatStorage {
     }
 
     private void resetOnlineUsers() {
-        transaction(() -> {dsl.update(USERS).set(USERS.ONLINE, false).execute();
-                    return null;});
+        transaction(
+                () -> {
+                    try (var statement =
+                            connection.prepareStatement("UPDATE users SET online = ?")) {
+                        statement.setBoolean(1, false);
+                        statement.executeUpdate();
+                    }
+                    return null;
+                });
     }
 
-    private <T> T transaction(Supplier<T> operation) {
+    private <T> T transaction(SqlOperation<T> operation) {
         try {
             connection.setAutoCommit(false);
             try {
                 var result = operation.get();
                 connection.commit();
                 return result;
-            } catch (DataAccessException exception) {
+            } catch (SQLException exception) {
                 connection.rollback();
                 throw failure("execute transaction", exception);
             } catch (RuntimeException exception) {
@@ -251,13 +294,21 @@ public final class PostgresChatStorage implements ChatStorage {
                 .migrate();
     }
 
-    private static UserState toUserState(UsersRecord record) {
-        var lastConnected = record.getLastConnected();
+    private static Message toMessage(ResultSet resultSet) throws SQLException {
+        return new Message(
+                resultSet.getLong("id"),
+                resultSet.getString("sender"),
+                resultSet.getString("text"),
+                resultSet.getTimestamp("sent_at").toInstant());
+    }
+
+    private static UserState toUserState(ResultSet resultSet) throws SQLException {
+        var lastConnected = resultSet.getTimestamp("last_connected");
         return new UserState(
-                record.getName(),
-                Boolean.TRUE.equals(record.getOnline()),
+                resultSet.getString("name"),
+                resultSet.getBoolean("online"),
                 lastConnected == null ? null : lastConnected.toInstant(),
-                Boolean.TRUE.equals(record.getNotificationsEnabled()));
+                resultSet.getBoolean("notifications_enabled"));
     }
 
     private static OffsetDateTime utc(Instant instant) {
@@ -270,7 +321,12 @@ public final class PostgresChatStorage implements ChatStorage {
         }
     }
 
-    private static StorageException failure(String operation, Throwable exception) {
+    private static StorageException failure(String operation, SQLException exception) {
         return new StorageException("Cannot " + operation, exception);
+    }
+
+    @FunctionalInterface
+    private interface SqlOperation<T> {
+        T get() throws SQLException;
     }
 }

@@ -3,3 +3,5 @@
 .idea
 *.iml
 README.md
+.m2-repository
+target

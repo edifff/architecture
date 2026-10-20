@@ -1,16 +1,26 @@
-# Образ для запуска чат-сервера.
+# Образ для запуска чат-сервера: сборка jar внутри Dockerfile (многостадийная).
 #
-# Сам jar собирается отдельно (Maven из IDE или сервис `builder` в compose.yaml),
-# потому что во время generate-sources плагин jOOQ поднимает контейнер PostgreSQL
-# через Testcontainers, а внутри `docker build` Docker-демон недоступен.
+# Тесты при сборке пропускаются — им нужен Docker-демон (Testcontainers),
+# который внутри `docker build` недоступен. Прогоняются отдельно: `mvn test`
+# или `docker compose --profile test run --rm tests`.
 #
-#   docker compose --profile build run --rm builder   # собрать target/chat.jar
-#   docker build -t arch-labs-chat .
+#   docker compose up --build        — PostgreSQL + чат-сервер
+#   docker compose --profile test run --rm tests   — прогнать тесты в контейнере
+
+FROM maven:3.9-eclipse-temurin-25 AS build
+
+WORKDIR /build
+
+COPY pom.xml .
+COPY src ./src
+
+RUN mvn -B -ntp -Dmaven.test.skip=true package
+
 FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
-COPY target/chat.jar app.jar
+COPY --from=build /build/target/chat.jar app.jar
 
 EXPOSE 8080
 

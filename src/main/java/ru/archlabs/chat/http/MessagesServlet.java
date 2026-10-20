@@ -16,8 +16,7 @@ final class MessagesServlet extends ChatServlet {
     }
 
     @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
             ClientConnection connection = connection(request);
             ChatProtocol.SendMessageRequest body = readBody(request, ChatProtocol.SendMessageRequest.class);
@@ -27,8 +26,7 @@ final class MessagesServlet extends ChatServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         execute(response, () -> {
             ClientConnection connection = connection(request);
             List<Message> history = connection.session().history();

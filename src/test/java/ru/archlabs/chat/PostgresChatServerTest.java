@@ -23,8 +23,7 @@ final class PostgresChatServerTest extends ChatServerContractTest {
     }
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private ChatServer server;
 
@@ -82,8 +81,7 @@ final class PostgresChatServerTest extends ChatServerContractTest {
         }).close();
         crashed.connect("bob", ignored -> {
         }).send("durable");
-        // Аварийное завершение: graceful ChatServerImpl.close() не вызывается,
-        // соединение с базой просто обрывается.
+
         crashStorage.close();
 
         try (var restarted = new ChatServerImpl(storage())) {

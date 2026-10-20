@@ -179,6 +179,13 @@ final class HttpChatProtocolTest {
 
         var response = get("/metrics");
         assertEquals(200, response.statusCode());
+        assertTrue(
+                response
+                        .headers()
+                        .firstValue("Content-Type")
+                        .orElse("")
+                        .startsWith("text/plain; version=0.0.4"),
+                () -> "unexpected Content-Type: " + response.headers().firstValue("Content-Type"));
         var body = response.body();
         assertTrue(body.contains("chat_requests_total"));
         assertTrue(body.contains("chat_requests_total{operation=\"connect\"} 2.0"));

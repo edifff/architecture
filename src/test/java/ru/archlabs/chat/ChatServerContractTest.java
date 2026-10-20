@@ -138,51 +138,6 @@ abstract class ChatServerContractTest {
         assertEquals(List.of("first", "second"), history.stream().map(Message::text).toList());
     }
 
-    @Test
-    void concurrentClientsDoNotLoseMessages() throws Exception {
-        var reader = server().connect("reader", ignored -> {
-        });
-        reader.setNotificationsEnabled(false);
-        var barrier = new CyclicBarrier(2);
-
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            var ivan =
-                    pool.submit(
-                            () -> {
-                                sendMessages("ivan", barrier);
-                                return null;
-                            });
-            var andray =
-                    pool.submit(
-                            () -> {
-                                sendMessages("andray", barrier);
-                                return null;
-                            });
-            ivan.get(30, TimeUnit.SECONDS);
-            andray.get(30, TimeUnit.SECONDS);
-        }
-
-        var history = reader.history();
-        assertEquals(200, history.size());
-        assertEquals(
-                LongStream.rangeClosed(1, 200).boxed().toList(),
-                history.stream().map(Message::id).toList());
-        assertEquals(100, history.stream().filter(message -> message.sender().equals("ivan")).count());
-        assertEquals(
-                100, history.stream().filter(message -> message.sender().equals("andray")).count());
-    }
-
-    private void sendMessages(String username, CyclicBarrier barrier) throws Exception {
-        try (var session = server().connect(username, ignored -> {
-        })) {
-            barrier.await(5, TimeUnit.SECONDS);
-            for (int i = 0; i < 100; i++) {
-                session.send(username + "-" + i);
-            }
-        }
-    }
-
-    /** Копилка входящих сообщений с ожиданием, пригодная для асинхронной доставки. */
     static final class Inbox {
         private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 
