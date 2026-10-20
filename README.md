@@ -1,7 +1,7 @@
 # Лабораторная работа: групповой чат на PostgreSQL и JDBC
 
 Проект реализует групповой чат. Логика чата доступна как напрямую через Java API в
-одном процессе, так и по сети: встроенный сервер Jetty принимает запросы сервлетами,
+одном процессе, так и по сети: встроенный HTTP-сервер на Netty принимает запросы,
 а клиент общается по протоколу HTTP. Состояние хранится в PostgreSQL, доступ к
 которому идёт обычным JDBC с `PreparedStatement`.
 
@@ -63,9 +63,9 @@ server.close();
 - `ChatSession` — интерфейс клиентской сессии (метод `send` возвращает `Message`);
 - `ChatStorage` — интерфейс хранилища состояния;
 - `PostgresChatStorage` — хранилище на PostgreSQL на обычном JDBC;
-- `ru.archlabs.chat.http` — сетевой слой: `ChatHttpServer` (встроенный Jetty и
-  сервлеты), `HttpChatClient`/`HttpChatSession` (HTTP-клиент), `ChatProtocol` и
-  `ChatJson` (описание JSON-протокола), `MetricsServlet` (`GET /metrics`);
+- `ru.archlabs.chat.http` — сетевой слой: `ChatHttpServer` (встроенный HTTP-сервер на
+  Netty) и `ChatServerHandler` (маршрутизация запросов и SSE), `HttpChatClient`/
+  `HttpChatSession` (HTTP-клиент), `ChatProtocol` и `ChatJson` (описание JSON-протокола);
 - `ChatMetrics` — счётчики Prometheus (запросы и доставленные оповещения);
 - `db.migration/V1__init.sql` — миграция Flyway со схемой `users` и `messages`;
 - `db.migration/V2__notifications.sql` — миграция Flyway с очередью недоставленных
@@ -77,10 +77,11 @@ server.close();
 - `Dockerfile` — образ чат-сервера;
 - `compose.yaml` — PostgreSQL (с томом для данных), чат-сервер и контейнер тестов.
 
-## Сетевой протокол (HTTP + Jetty)
+## Сетевой протокол (HTTP + Netty)
 
-Серверная часть — встроенный Jetty 12 (`ChatHttpServer`) с сервлетами по спецификации
-Jakarta Servlet 6.0. Клиентская часть — `HttpChatClient`, реализующий интерфейс
+Серверная часть — встроенный HTTP-сервер на Netty (`ChatHttpServer`) с единственным
+обработчиком `ChatServerHandler`, который разбирает метод и путь каждого запроса.
+Клиентская часть — `HttpChatClient`, реализующий интерфейс
 `ChatServer`, и `HttpChatSession`, реализующий `ChatSession`. Благодаря этому
 прикладной код не зависит от транспорта, а общий контракт (`ChatServerContractTest`)
 выполняется и для прямой, и для сетевой реализации.
@@ -116,8 +117,8 @@ Jakarta Servlet 6.0. Клиентская часть — `HttpChatClient`, ре�
 Оповещения доставляются по **Server-Sent Events**: клиент держит открытым поток
 `GET /events/{username}` с типом `text/event-stream`. На сервере для каждого
 подключённого HTTP-клиента создаётся очередь сообщений (`ClientConnection`). Доменный
-`ChatServer` при отправке вызывает обработчик этой очереди, а SSE-сервлет
-(`EventsServlet`) вычитывает очередь и записывает события:
+`ChatServer` при отправке вызывает обработчик этой очереди, а `ChatServerHandler`
+вычитывает очередь задачей, запланированной на event loop Netty, и записывает события:
 
 ```text
 event: message
@@ -153,8 +154,8 @@ data: {"id":1,"sender":"andray","text":"hi","sentAt":"2026-..."}
 
 Метрики считает официальный Prometheus Java-клиент (`prometheus-metrics-core`) в классе
 `ChatMetrics`. У каждого экземпляра собственный `PrometheusRegistry`, поэтому счётчики
-разных серверов не смешиваются. Значения отдаются на `GET /metrics` сервлетом
-`MetricsServlet` в текстовом формате Prometheus:
+разных серверов не смешиваются. Значения отдаются на `GET /metrics` обработчиком
+`ChatServerHandler` в текстовом формате Prometheus:
 
 ```text
 # HELP chat_requests_total Processed user requests
@@ -173,7 +174,7 @@ chat_notifications_total{channel="backlog"} 1.0
   `live` (онлайн-доставка) и `backlog` (накопленные оповещения, выданные при подключении).
 
 `ChatHttpServer` получает тот же экземпляр `ChatMetrics` у серверной логики (интерфейс
-`ChatMetrics.Source`, который реализует `ChatServerImpl`) и вешает сервлет на путь
+`ChatMetrics.Source`, который реализует `ChatServerImpl`) и отдаёт его на путь
 `/metrics`. Скрейп Prometheus настраивается стандартно:
 
 ```yaml
@@ -201,9 +202,10 @@ scrape_configs:
 | `CHAT_HTTP_PORT` | порт HTTP-сервера | `8080` |
 
 При старте приложение ждёт готовности PostgreSQL (до 30 попыток), применяет миграции
-Flyway и поднимает Jetty. По `SIGTERM` срабатывает обработчик завершения: Jetty
-останавливается, активные сессии закрываются, соединение с базой освобождается —
-поэтому выключение и повторный запуск контейнера не оставляют висящих `online`-сессий.
+Flyway и поднимает HTTP-сервер на Netty. По `SIGTERM` срабатывает обработчик завершения:
+event loop-группы останавливаются, активные сессии закрываются, соединение с базой
+освобождается — поэтому выключение и повторный запуск контейнера не оставляют
+висящих `online`-сессий.
 Исполняемый jar (`target/chat.jar`) собирается плагином `maven-shade-plugin`.
 
 ### Сборка и запуск
@@ -267,7 +269,7 @@ Testcontainers. Сервису `tests` проброшен `/var/run/docker.sock`
 
 ### Как устроено сетевое взаимодействие?
 
-Сервер поднимает встроенный Jetty с сервлетами, а клиент вызывает функции сервера
+Сервер поднимает встроенный HTTP-сервер на Netty, а клиент вызывает функции сервера
 обычными HTTP-запросами и получает оповещения по Server-Sent Events (подробности — в
 разделе «Сетевой протокол»). Поскольку `HttpChatClient` реализует интерфейс
 `ChatServer`, а `HttpChatSession` — `ChatSession`, вызывающий код не зависит от того,
