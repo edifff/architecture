@@ -1,7 +1,7 @@
 # Sub-project 1: Contracts (protobuf + gRPC codegen) — Design
 
 **Date:** 2026-10-21
-**Status:** awaiting author review
+**Status:** reviewed & implemented (2026-10-21) — see «Review & implementation notes»
 **Parent effort:** layered-architecture lab — 6 sub-projects:
 (1) Contracts [this spec] → (2) Storage service → (3) Chat service →
 (4) Frontend (Netty + Facade) → (5) Compose wiring → (6) Performance (k6 + Prometheus/Grafana).
@@ -188,3 +188,46 @@ The lab requires each layer covered by tests separately; for contracts that mean
   without the provided-scope dependency compilation fails under `-Werror`.
 - **Reactor move** touches every path reference (Dockerfile, .dockerignore, .mvn stays at
   root); mitigated by the Docker regression test above.
+
+## Review & implementation notes (2026-10-21)
+
+Review of this spec against the repo + Maven Central, and the deltas applied while
+implementing. Everything not listed below was implemented as written (D1–D5).
+
+1. **D2 «protoc 26.x-ish» corrected to `protoc:4.36.2`.** Since protobuf 4.26 the protoc
+   version mirrors `protobuf-java`; a 26.x binary with a 4.36.2 runtime risks a
+   generated-code/runtime mismatch. Pinned via `<protocArtifact>`; gRPC plugin pinned to
+   `protoc-gen-grpc-java:1.85.1`. `kr.motd.maven:os-maven-plugin:1.7.1` (the extension
+   behind `${os.detected.classifier}`) declared explicitly in `proto/pom.xml`. All
+   artifacts verified with HTTP 200 against repo1.maven.org.
+2. **D2 `javax.annotation-api` dropped (risk obsolete).** grpc-java 1.85.1 + protoc 4.36.2
+   emit only `@io.grpc.stub.annotations.GrpcGenerated`; zero `javax.annotation` references
+   across all generated sources. The stated `-Werror` failure does not occur — and the
+   inherited `-Xlint:all,-this-escape -Werror` compiles the 49 generated files clean, so
+   no per-module compiler-flag exemption was needed either.
+3. **D2 added `com.google.protobuf:protobuf-java-util:4.36.2`.** D5 prescribes
+   `com.google.protobuf.util.Timestamps`, which lives in this artifact — it was missing
+   from the version table. Every service converts `Instant ↔ Timestamp`, so the shared
+   `proto` module carries it.
+4. **D3 unary RPCs cannot return `repeated …` directly** — gRPC returns exactly one
+   message. The table's `→ repeated common.Message/UserState` shorthand is implemented as
+   wrapper messages: `MessagesResponse{messages}` (in both `storage` and `chat`) and
+   `UserStatesResponse{users}`.
+5. **D3 field-less messages renamed**: `Request{}` (OnlineUsers) → `common.Empty`;
+   `SetNotificationsEnabled(Request)` → `SetNotificationsEnabledRequest`; `ClearRequest` →
+   `ClearNotificationsRequest` for symmetry with its `message_ids` payload.
+   `HistoryRequest {}` (storage, arg-less domain method) keeps its spec name. Also added
+   the missing `import "google/protobuf/timestamp.proto";`.
+6. **Testing corrections to the spec's example API**: protobuf generates
+   `public static final int SENT_AT_FIELD_NUMBER` constants, not
+   `Message.getSentAtFieldNumber()` methods — assertions use the constants. Service
+   descriptors are exposed by `ChatStorageGrpc.getServiceDescriptor()` /
+   `ChatServiceGrpc.getServiceDescriptor()` (the inner class is `ChatStorageImplBase`,
+   not `ChatStorage`, and has no such method).
+7. **Counts**: the spec's «32 existing app tests» predated 3 protocol-hardening tests
+   added in `e88c6fd` — actual gate is **35 app + 8 proto = 43**, all green; plus
+   `docker build` green.
+8. **Files delta**: Dockerfile needed `COPY proto ./proto` + `COPY app ./app` (and
+   `COPY --from=build /build/app/target/chat.jar`) in addition to the `-pl app -am`
+   command; `.dockerignore` `target` → `**/target` as planned; README («Структура» and
+   the build paragraph) updated for the reactor — not in the original Files list.

@@ -1,5 +1,11 @@
 # Netty HTTP Server Rewrite Implementation Plan
 
+> **SUPERSEDED (2026-10-21).** Implemented and shipped (commits `03e6f7f`, `941141e`,
+> `e88c6fd`); this document is kept for history only. Its Netty frontend design
+> (routing handler, SSE on the event loop, graceful shutdown) survives as the basis
+> of sub-project 4 of the layered-architecture lab — see
+> `../specs/2026-10-21-contracts-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the Jetty+servlet HTTP server with a raw Netty server while keeping the wire protocol byte-identical, so the client and all existing tests pass unchanged.
