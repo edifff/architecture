@@ -5,6 +5,8 @@ services:
     ports: !reset []
   storage:
     ports: !reset []
+  api:
+    ports: !reset []
   prometheus:
     ports: !reset []
   grafana:

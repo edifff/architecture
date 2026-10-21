@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 echo "layer,replicas,iterations,rps,avg_ms,p50_ms,p95_ms,p99_ms" > "$OUT"
 
-"${COMPOSE[@]}" up -d --build db storage chat
+"${COMPOSE[@]}" up -d --build db storage chat api
 sleep 8
 
 for n in $REPLICAS; do
@@ -45,7 +45,8 @@ import json, sys
 layer, replicas, path, out = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 with open(path) as f:
     m = json.load(f)["metrics"]
-dur = m["grpc_req_duration"]
+metric = "http_req_duration" if layer == "api" else "grpc_req_duration"
+dur = m[metric]
 iters = m["iterations"]
 row = [
     layer,

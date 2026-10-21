@@ -1,21 +1,21 @@
 package ru.archlabs.chat.http;
 
-import ru.archlabs.chat.ChatSession;
-import ru.archlabs.chat.Message;
+import ru.archlabs.chat.api.Subscription;
+import ru.archlabs.proto.common.Message;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * Состояние одного HTTP-клиента на сервере: доменная сессия чата и очередь
- * сообщений, которую вычитывает и отправляет клиенту SSE-сервлет.
+ * Состояние одного HTTP-клиента: очередь оповещений, которую вычитывает SSE-поток,
+ * и подписка на gRPC-поток chat-сервиса.
  */
 final class ClientConnection {
     private static final int CAPACITY = 10_000;
 
     private final String username;
     private final BlockingQueue<Message> pending = new LinkedBlockingQueue<>(CAPACITY);
-    private ChatSession session;
+    private Subscription subscription;
 
     ClientConnection(String username) {
         this.username = username;
@@ -29,11 +29,11 @@ final class ClientConnection {
         return pending;
     }
 
-    ChatSession session() {
-        return session;
+    Subscription subscription() {
+        return subscription;
     }
 
-    void session(ChatSession session) {
-        this.session = session;
+    void subscription(Subscription subscription) {
+        this.subscription = subscription;
     }
 }

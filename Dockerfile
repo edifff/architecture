@@ -35,3 +35,16 @@ ENV CHAT_GRPC_PORT="50052" \
 
 EXPOSE 50052
 ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# --- Точка входа (API / Facade) --------------------------------------------
+FROM eclipse-temurin:25-jre AS api
+
+WORKDIR /app
+COPY --from=build /build/api/target/api.jar app.jar
+
+ENV CHAT_HTTP_PORT="8080" \
+    CHAT_HOST="chat" \
+    CHAT_GRPC_PORT="50052"
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

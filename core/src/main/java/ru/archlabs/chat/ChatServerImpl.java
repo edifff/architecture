@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
+public final class ChatServerImpl implements ChatServer, MetricsSource {
     private final ChatStorage storage;
     private final ChatMetrics metrics;
     private final Map<String, ActiveSession> activeSessions = new LinkedHashMap<>();
@@ -33,14 +33,14 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         requireText(username, "Username");
         Objects.requireNonNull(onMessage, "onMessage");
         metrics.requestProcessed("connect");
-        Session session;
+        ChatSessionImpl session;
         List<Message> backlog;
         synchronized (this) {
             if (activeSessions.containsKey(username)) {
                 throw new IllegalStateException("User is already connected: " + username);
             }
             storage.connect(username, Instant.now());
-            session = new Session(username);
+            session = new ChatSessionImpl(this, username);
             activeSessions.put(username, new ActiveSession(session, onMessage));
             backlog = storage.undeliveredNotifications(username);
         }
@@ -67,14 +67,14 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         }
     }
 
-    private Message send(Session session, String text) {
+    Message send(ChatSessionImpl session, String text) {
         requireText(text, "Message");
         metrics.requestProcessed("send");
         Message message;
         List<Consumer<Message>> recipients;
         synchronized (this) {
             requireActive(session);
-            message = storage.append(session.username, text, Instant.now());
+            message = storage.append(session.username(), text, Instant.now());
             recipients =
                     storage.onlineUsersWithNotificationsEnabled().stream()
                             .map(UserState::name)
@@ -95,19 +95,19 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         return message;
     }
 
-    private void setNotificationsEnabled(Session session, boolean enabled) {
+    void setNotificationsEnabled(ChatSessionImpl session, boolean enabled) {
         metrics.requestProcessed("set_notifications");
         synchronized (this) {
             requireActive(session);
-            storage.setNotificationsEnabled(session.username, enabled);
+            storage.setNotificationsEnabled(session.username(), enabled);
         }
     }
 
-    private List<Message> history(Session session) {
+    List<Message> history(ChatSessionImpl session) {
         metrics.requestProcessed("history");
         synchronized (this) {
             requireActive(session);
-            var user = storage.user(session.username).orElseThrow();
+            var user = storage.user(session.username()).orElseThrow();
             if (user.notificationsEnabled()) {
                 throw new IllegalStateException("Disable notifications before requesting history");
             }
@@ -115,12 +115,12 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         }
     }
 
-    private void disconnect(Session session) {
+    void disconnect(ChatSessionImpl session) {
         metrics.requestProcessed("disconnect");
         synchronized (this) {
             requireActive(session);
-            storage.disconnect(session.username, Instant.now());
-            activeSessions.remove(session.username);
+            storage.disconnect(session.username(), Instant.now());
+            activeSessions.remove(session.username());
         }
     }
 
@@ -148,8 +148,8 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         }
     }
 
-    private void requireActive(Session session) {
-        var active = activeSessions.get(session.username);
+    private void requireActive(ChatSessionImpl session) {
+        var active = activeSessions.get(session.username());
         if (active == null || active.session() != session) {
             throw new IllegalStateException("Session is not active");
         }
@@ -159,49 +159,5 @@ public final class ChatServerImpl implements ChatServer, ChatMetrics.Source {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(label + " must not be blank");
         }
-    }
-
-    private final class Session implements ChatSession {
-        private final String username;
-        private boolean closed;
-
-        private Session(String username) {
-            this.username = username;
-        }
-
-        @Override
-        public Message send(String text) {
-            requireOpen();
-            return ChatServerImpl.this.send(this, text);
-        }
-
-        @Override
-        public void setNotificationsEnabled(boolean enabled) {
-            requireOpen();
-            ChatServerImpl.this.setNotificationsEnabled(this, enabled);
-        }
-
-        @Override
-        public List<Message> history() {
-            requireOpen();
-            return ChatServerImpl.this.history(this);
-        }
-
-        @Override
-        public void close() {
-            if (!closed) {
-                ChatServerImpl.this.disconnect(this);
-                closed = true;
-            }
-        }
-
-        private void requireOpen() {
-            if (closed) {
-                throw new IllegalStateException("Session is closed");
-            }
-        }
-    }
-
-    private record ActiveSession(Session session, Consumer<Message> onMessage) {
     }
 }

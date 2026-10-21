@@ -27,14 +27,6 @@ import java.nio.charset.StandardCharsets;
  * серверов (например, в тестах) не смешиваются.
  */
 public final class ChatMetrics {
-    /**
-     * Источник метрик. Реализуется серверной логикой, чтобы HTTP-слой мог получить тот же
-     * экземпляр {@link ChatMetrics} и отдать его на {@code GET /metrics}.
-     */
-    public interface Source {
-        ChatMetrics metrics();
-    }
-
     private static final ExpositionFormats EXPOSITION = ExpositionFormats.init();
 
     private final PrometheusRegistry registry = new PrometheusRegistry();

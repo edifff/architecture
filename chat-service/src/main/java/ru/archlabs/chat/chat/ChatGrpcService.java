@@ -40,6 +40,8 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     private final ChatServer chat;
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, BlockingQueue<Message>> pending = new ConcurrentHashMap<>();
+    private final Map<String, java.util.concurrent.atomic.AtomicBoolean> subscriptionStops =
+            new ConcurrentHashMap<>();
 
     public ChatGrpcService(ChatServer chat) {
         this.chat = chat;
@@ -65,6 +67,10 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
         var name = request.getName();
         var session = sessions.remove(name);
         pending.remove(name);
+        var stop = subscriptionStops.remove(name);
+        if (stop != null) {
+            stop.set(true);
+        }
         if (session == null) {
             observer.onError(
                     Status.NOT_FOUND.withDescription("Unknown user: " + name).asRuntimeException());
@@ -140,14 +146,15 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
         }
 
         var call = (ServerCallStreamObserver<ru.archlabs.proto.common.Message>) observer;
-        var cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
-        call.setOnCancelHandler(() -> cancelled.set(true));
+        var stop = new java.util.concurrent.atomic.AtomicBoolean(false);
+        subscriptionStops.put(name, stop);
+        call.setOnCancelHandler(() -> stop.set(true));
 
         var thread =
                 new Thread(
                         () -> {
                             try {
-                                while (!cancelled.get() && !call.isCancelled()) {
+                                while (!stop.get() && !call.isCancelled()) {
                                     var message = queue.poll(100, TimeUnit.MILLISECONDS);
                                     if (message != null) {
                                         call.onNext(toProto(message));
@@ -155,10 +162,10 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
                                 }
                                 call.onCompleted();
                             } catch (RuntimeException exception) {
-                                cancelled.set(true);
+                                stop.set(true);
                             } catch (InterruptedException exception) {
                                 Thread.currentThread().interrupt();
-                                cancelled.set(true);
+                                stop.set(true);
                             }
                         },
                         "chat-subscribe-" + name);

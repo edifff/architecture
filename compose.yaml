@@ -59,6 +59,20 @@ services:
       - "9101:9101"
     restart: unless-stopped
 
+  api:
+    build:
+      context: .
+      target: api
+    depends_on:
+      - chat
+    environment:
+      CHAT_HTTP_PORT: "8080"
+      CHAT_HOST: chat
+      CHAT_GRPC_PORT: "50052"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     depends_on:

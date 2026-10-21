@@ -13,7 +13,7 @@ final class UserMessageTest {
     void parsesConnect() {
         var message = UserMessage.parse("CONNECT ivan");
 
-        assertEquals(UserMessage.Operation.CONNECT, message.operation());
+        assertEquals(Operation.CONNECT, message.operation());
         assertEquals("ivan", message.username());
         assertNull(message.text());
         assertNull(message.enabled());
@@ -23,7 +23,7 @@ final class UserMessageTest {
     void parsesSendWithSpacesInText() {
         var message = UserMessage.parse("send ivan hello big world");
 
-        assertEquals(UserMessage.Operation.SEND, message.operation());
+        assertEquals(Operation.SEND, message.operation());
         assertEquals("ivan", message.username());
         assertEquals("hello big world", message.text());
     }
@@ -32,7 +32,7 @@ final class UserMessageTest {
     void parsesNotificationsFlag() {
         var message = UserMessage.parse("SET_NOTIFICATIONS ivan false");
 
-        assertEquals(UserMessage.Operation.SET_NOTIFICATIONS, message.operation());
+        assertEquals(Operation.SET_NOTIFICATIONS, message.operation());
         assertEquals(Boolean.FALSE, message.enabled());
     }
 

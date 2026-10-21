@@ -5,7 +5,6 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,10 +18,7 @@ import ru.archlabs.proto.chat.SendRequest;
 import ru.archlabs.proto.chat.SetNotificationsEnabledRequest;
 import ru.archlabs.proto.chat.SubscribeRequest;
 import ru.archlabs.proto.chat.UserRequest;
-import ru.archlabs.proto.common.Message;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,31 +78,17 @@ final class ChatGrpcServiceTest {
     @Test
     void sendDeliversToSubscriber() throws Exception {
         blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
-        var received = new LinkedBlockingQueue<Message>();
+        var collector = new MessageCollector();
         ChatServiceGrpc.newStub(channel)
                 .subscribe(
-                        SubscribeRequest.newBuilder().setName("ivan").build(),
-                        new StreamObserver<>() {
-                            @Override
-                            public void onNext(Message message) {
-                                received.add(message);
-                            }
-
-                            @Override
-                            public void onError(Throwable throwable) {
-                            }
-
-                            @Override
-                            public void onCompleted() {
-                            }
-                        });
+                        SubscribeRequest.newBuilder().setName("ivan").build(), collector);
         blocking.connect(ConnectRequest.newBuilder().setName("andray").build());
 
         var sent =
                 blocking.send(
                         SendRequest.newBuilder().setName("andray").setText("hi").build());
 
-        var delivered = received.poll(5, TimeUnit.SECONDS);
+        var delivered = collector.poll(5, TimeUnit.SECONDS);
         assertNotNull(delivered);
         assertEquals(sent.getId(), delivered.getId());
         assertEquals("andray", delivered.getSender());

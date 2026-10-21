@@ -1,28 +1,13 @@
 package ru.archlabs.chat.api;
 
-import com.google.protobuf.Timestamp;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import ru.archlabs.proto.chat.ChatServiceGrpc;
-import ru.archlabs.proto.chat.ConnectRequest;
-import ru.archlabs.proto.chat.ConnectResponse;
-import ru.archlabs.proto.chat.DisconnectRequest;
-import ru.archlabs.proto.chat.HistoryRequest;
 import ru.archlabs.proto.chat.MessagesResponse;
-import ru.archlabs.proto.chat.SendRequest;
-import ru.archlabs.proto.chat.SetNotificationsEnabledRequest;
-import ru.archlabs.proto.chat.UserRequest;
-import ru.archlabs.proto.common.Empty;
-import ru.archlabs.proto.common.Message;
-import ru.archlabs.proto.common.UserState;
-
-import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -97,7 +82,10 @@ final class ChatFacadeTest {
 
     @Test
     void rendersHistoryFromProtobufResponse() {
-        fake.history = MessagesResponse.newBuilder().addMessages(message(1, "hi")).build();
+        fake.history =
+                MessagesResponse.newBuilder()
+                        .addMessages(FakeChatService.message(1, "hi"))
+                        .build();
 
         var result = facade.handle("HISTORY ivan");
 
@@ -109,70 +97,5 @@ final class ChatFacadeTest {
         facade.handle("DISCONNECT ivan");
 
         assertEquals("ivan", fake.lastDisconnect.getName());
-    }
-
-    private static Message message(long id, String text) {
-        return Message.newBuilder()
-                .setId(id)
-                .setSender("ivan")
-                .setText(text)
-                .setSentAt(Timestamp.newBuilder().setSeconds(Instant.now().getEpochSecond()).build())
-                .build();
-    }
-
-    private static final class FakeChatService extends ChatServiceGrpc.ChatServiceImplBase {
-        private final UserState user =
-                UserState.newBuilder()
-                        .setName("ivan")
-                        .setOnline(true)
-                        .setNotificationsEnabled(true)
-                        .setLastConnected(Timestamp.newBuilder().setSeconds(1).build())
-                        .build();
-        private ConnectRequest lastConnect;
-        private SendRequest lastSend;
-        private DisconnectRequest lastDisconnect;
-        private SetNotificationsEnabledRequest lastNotifications;
-        private MessagesResponse history = MessagesResponse.getDefaultInstance();
-
-        @Override
-        public void connect(ConnectRequest request, StreamObserver<ConnectResponse> observer) {
-            lastConnect = request;
-            observer.onNext(ConnectResponse.newBuilder().setUser(user).build());
-            observer.onCompleted();
-        }
-
-        @Override
-        public void disconnect(DisconnectRequest request, StreamObserver<Empty> observer) {
-            lastDisconnect = request;
-            observer.onNext(Empty.getDefaultInstance());
-            observer.onCompleted();
-        }
-
-        @Override
-        public void send(SendRequest request, StreamObserver<Message> observer) {
-            lastSend = request;
-            observer.onNext(message(7, request.getText()));
-            observer.onCompleted();
-        }
-
-        @Override
-        public void history(HistoryRequest request, StreamObserver<MessagesResponse> observer) {
-            observer.onNext(history);
-            observer.onCompleted();
-        }
-
-        @Override
-        public void setNotificationsEnabled(
-                SetNotificationsEnabledRequest request, StreamObserver<Empty> observer) {
-            lastNotifications = request;
-            observer.onNext(Empty.getDefaultInstance());
-            observer.onCompleted();
-        }
-
-        @Override
-        public void user(UserRequest request, StreamObserver<UserState> observer) {
-            observer.onNext(user);
-            observer.onCompleted();
-        }
     }
 }

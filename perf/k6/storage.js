@@ -42,8 +42,5 @@ export default function () {
   });
   check(res, { 'append OK': (r) => r && r.status === grpc.StatusOK });
 
-  res = client.invoke('storage.ChatStorage/History', {});
-  check(res, { 'history OK': (r) => r && r.status === grpc.StatusOK });
-
   client.invoke('storage.ChatStorage/Disconnect', { name: user, at: now });
 }

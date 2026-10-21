@@ -137,20 +137,4 @@ abstract class ChatServerContractTest {
         assertEquals(List.of(1L, 2L), history.stream().map(Message::id).toList());
         assertEquals(List.of("first", "second"), history.stream().map(Message::text).toList());
     }
-
-    static final class Inbox {
-        private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
-
-        void accept(Message message) {
-            messages.add(message);
-        }
-
-        Message await() throws InterruptedException {
-            return messages.poll(5, TimeUnit.SECONDS);
-        }
-
-        Message poll() throws InterruptedException {
-            return messages.poll(300, TimeUnit.MILLISECONDS);
-        }
-    }
 }

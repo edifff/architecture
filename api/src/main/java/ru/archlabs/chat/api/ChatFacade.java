@@ -105,7 +105,7 @@ public final class ChatFacade {
     }
 
     /** Открывает серверный поток оповещений и передаёт их обработчику. */
-    public void subscribe(String username, Consumer<Message> onMessage) {
+    public Subscription subscribe(String username, Consumer<Message> onMessage) {
         requireUsername(username);
         var thread =
                 new Thread(
@@ -113,13 +113,18 @@ public final class ChatFacade {
                             var stream =
                                     blocking.subscribe(
                                             SubscribeRequest.newBuilder().setName(username).build());
-                            while (stream.hasNext()) {
-                                onMessage.accept(stream.next());
+                            try {
+                                while (stream.hasNext()) {
+                                    onMessage.accept(stream.next());
+                                }
+                            } catch (RuntimeException ignored) {
+                                // Поток закрыт (отключение или отмена подписки).
                             }
                         },
                         "facade-subscribe-" + username);
         thread.setDaemon(true);
         thread.start();
+        return new Subscription(thread);
     }
 
     private static void requireUsername(String username) {

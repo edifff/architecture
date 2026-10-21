@@ -325,9 +325,4 @@ public final class PostgresChatStorage implements ChatStorage {
     private static StorageException failure(String operation, SQLException exception) {
         return new StorageException("Cannot " + operation, exception);
     }
-
-    @FunctionalInterface
-    private interface SqlOperation<T> {
-        T get() throws SQLException;
-    }
 }

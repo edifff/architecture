@@ -9,15 +9,6 @@ package ru.archlabs.chat.api;
  * {@code HISTORY}, {@code USER}, {@code SET_NOTIFICATIONS}.
  */
 public record UserMessage(Operation operation, String username, String text, Boolean enabled) {
-    public enum Operation {
-        CONNECT,
-        DISCONNECT,
-        SEND,
-        HISTORY,
-        USER,
-        SET_NOTIFICATIONS
-    }
-
     /** Разбирает строку пользователя; синтаксические ошибки — {@link IllegalArgumentException}. */
     public static UserMessage parse(String line) {
         if (line == null || line.isBlank()) {
