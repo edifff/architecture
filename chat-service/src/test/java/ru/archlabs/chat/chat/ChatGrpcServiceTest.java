@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Доменный слой отдельно: gRPC ChatService поверх ChatServerImpl с in-memory хранилищем. */
 final class ChatGrpcServiceTest {
     private ChatServerImpl chat;
     private io.grpc.Server server;

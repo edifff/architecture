@@ -7,7 +7,6 @@ import ru.archlabs.chat.http.ChatHttpServer;
 
 import java.util.concurrent.CountDownLatch;
 
-/** Точка входа процесса API: Netty HTTP/SSE и gRPC-клиент к chat-сервису. */
 public final class ChatApplication {
     private ChatApplication() {
     }

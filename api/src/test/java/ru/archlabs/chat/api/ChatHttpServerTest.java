@@ -26,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Слой API отдельно: Netty HTTP + Facade поверх in-process gRPC-сервиса (без БД). */
 final class ChatHttpServerTest {
     private FakeChatService fake;
     private Server grpcServer;

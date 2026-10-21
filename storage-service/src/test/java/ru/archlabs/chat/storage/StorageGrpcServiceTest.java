@@ -30,7 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Слой хранения отдельно: gRPC ChatStorage поверх PostgreSQL (Testcontainers). */
 @Testcontainers
 final class StorageGrpcServiceTest {
     static {

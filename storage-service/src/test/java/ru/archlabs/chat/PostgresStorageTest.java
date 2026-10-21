@@ -15,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-/** Прямое подключение к {@link ChatServerImpl} с хранилищем PostgreSQL. */
 @Testcontainers
 final class PostgresStorageTest extends ChatServerContractTest {
     static {

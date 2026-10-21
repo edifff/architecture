@@ -5,10 +5,6 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Тесты метрик Prometheus: накопление счётчиков по меткам, игнор нулевых
- * доставок, служебные строки формата и независимость экземпляров.
- */
 final class ChatMetricsTest {
     private final ChatMetrics metrics = new ChatMetrics();
 

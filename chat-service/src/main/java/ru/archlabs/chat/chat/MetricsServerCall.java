@@ -6,7 +6,6 @@ import io.grpc.ServerCall;
 import io.grpc.Status;
 import ru.archlabs.chat.metrics.RpcMetrics;
 
-/** Записывает результат и латентность вызова при закрытии. */
 final class MetricsServerCall<ReqT, RespT>
         extends ForwardingServerCall.SimpleForwardingServerCall<ReqT, RespT> {
     private final RpcMetrics metrics;

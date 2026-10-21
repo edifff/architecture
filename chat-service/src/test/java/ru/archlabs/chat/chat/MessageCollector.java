@@ -7,7 +7,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/** Собирает сообщения из серверного потока в тестах. */
 final class MessageCollector implements StreamObserver<Message> {
     private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 

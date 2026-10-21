@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** In-memory реализация хранилища для тестов доменного слоя (без БД и транспорта). */
 public final class InMemoryChatStorage implements ChatStorage {
     private final Map<String, UserState> users = new LinkedHashMap<>();
     private final List<Message> messages = new ArrayList<>();

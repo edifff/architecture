@@ -12,7 +12,6 @@ import ru.archlabs.chat.metrics.RpcMetrics;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-/** Точка входа доменного слоя: gRPC-сервер чата поверх ChatServerImpl и storage-сервиса. */
 public final class ChatMain {
     private ChatMain() {
     }
@@ -25,8 +24,7 @@ public final class ChatMain {
         ManagedChannel storageChannel =
                 ManagedChannelBuilder.forAddress(storageHost, storagePort).usePlaintext().build();
         var storage = new GrpcChatStorage(storageChannel);
-        // Сессии живут в этом процессе: после рестарта никто не онлайн.
-        // Storage может стартовать позже — повторяем подключение.
+
         resetOnlineUsersWithRetries(storage);
 
         var chat = new ChatServerImpl(storage);

@@ -8,7 +8,6 @@ import ru.archlabs.chat.metrics.RpcMetrics;
 
 import java.util.concurrent.CountDownLatch;
 
-/** Точка входа слоя хранения: gRPC-сервер поверх JDBC-хранилища PostgreSQL. */
 public final class StorageMain {
     private StorageMain() {
     }

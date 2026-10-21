@@ -3,7 +3,6 @@ package ru.archlabs.chat.http;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/** Преобразование объектов протокола в JSON и обратно. */
 public final class ChatJson {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

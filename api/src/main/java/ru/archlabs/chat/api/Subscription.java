@@ -1,6 +1,5 @@
 package ru.archlabs.chat.api;
 
-/** Отменяемая подписка на поток оповещений. */
 public final class Subscription implements AutoCloseable {
     private final Thread thread;
 

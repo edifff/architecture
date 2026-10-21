@@ -22,11 +22,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Адаптер доменного интерфейса {@link ChatStorage} к gRPC-сервису хранения.
- * Домен по-прежнему не знает о транспорте: {@code ChatServerImpl} работает с этим
- * объектом как с обычным хранилищем.
- */
 public final class GrpcChatStorage implements ChatStorage {
     private final ChatStorageGrpc.ChatStorageBlockingStub stub;
 

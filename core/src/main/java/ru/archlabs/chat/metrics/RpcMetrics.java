@@ -11,10 +11,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
-/**
- * Метрики gRPC-слоя: число вызовов и гистограмма латентности по каждому методу.
- * У каждого экземпляра собственный реестр, поэтому реплики не смешивают счётчики.
- */
 public final class RpcMetrics {
     private static final ExpositionFormats EXPOSITION = ExpositionFormats.init();
 

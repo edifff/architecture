@@ -1,15 +1,7 @@
 package ru.archlabs.chat.api;
 
-/**
- * Пользовательское сообщение во внешнем (текстовом) формате — то, что «входной»
- * элемент получает до конвертации в protobuf.
- *
- * <p>Формат строки: {@code <OPERATION> <username> [аргумент...]}.
- * Поддерживаются операции {@code CONNECT}, {@code DISCONNECT}, {@code SEND},
- * {@code HISTORY}, {@code USER}, {@code SET_NOTIFICATIONS}.
- */
 public record UserMessage(Operation operation, String username, String text, Boolean enabled) {
-    /** Разбирает строку пользователя; синтаксические ошибки — {@link IllegalArgumentException}. */
+
     public static UserMessage parse(String line) {
         if (line == null || line.isBlank()) {
             throw new IllegalArgumentException("Message must not be blank");

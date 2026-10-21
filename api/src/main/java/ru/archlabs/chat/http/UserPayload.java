@@ -3,7 +3,6 @@ package ru.archlabs.chat.http;
 import com.google.protobuf.Timestamp;
 import ru.archlabs.proto.common.UserState;
 
-/** Состояние пользователя в JSON-протоколе клиента. */
 public record UserPayload(
         String name, boolean online, String lastConnected, boolean notificationsEnabled) {
     public static UserPayload from(UserState state) {

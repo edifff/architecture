@@ -20,11 +20,6 @@ import ru.archlabs.proto.storage.UserStatesResponse;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Слой хранения как gRPC-сервис: контракт {@code storage.ChatStorage} поверх
- * доменного интерфейса {@link ChatStorage} (реализация — {@link PostgresChatStorage}).
- * Доменные исключения маппятся на статусы по соглашению из {@code proto/README.md}.
- */
 public final class StorageGrpcService extends ChatStorageGrpc.ChatStorageImplBase {
     private final ChatStorage storage;
 

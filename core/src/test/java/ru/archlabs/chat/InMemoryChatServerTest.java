@@ -1,6 +1,5 @@
 package ru.archlabs.chat;
 
-/** Доменный слой без транспорта: ChatServerImpl поверх in-memory хранилища. */
 final class InMemoryChatServerTest extends ChatServerContractTest {
     private ChatServer server;
 

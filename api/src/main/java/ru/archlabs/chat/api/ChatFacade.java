@@ -15,15 +15,6 @@ import ru.archlabs.proto.common.UserState;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Входной элемент слоистой архитектуры («Facade»).
- *
- * <p>Принимает пользовательское сообщение в текстовом виде, <b>разбирает</b> его
- * ({@link UserMessage#parse}), <b>проверяет</b> инварианты и <b>конвертирует</b>
- * в protobuf-запросы контракта {@code chat.ChatService}, которые уходят в
- * chat-сервис по gRPC. Это единственная точка, где внешний формат встречается
- * с внутренним форматом межконтейнерного взаимодействия.
- */
 public final class ChatFacade {
     private final ChatServiceGrpc.ChatServiceBlockingStub blocking;
 
@@ -31,7 +22,6 @@ public final class ChatFacade {
         this.blocking = ChatServiceGrpc.newBlockingStub(channel);
     }
 
-    /** Полный цикл входного элемента: разбор → проверка → конвертация → вызов. */
     public String handle(String userMessage) {
         var parsed = UserMessage.parse(userMessage);
         requireUsername(parsed.username());
@@ -104,7 +94,6 @@ public final class ChatFacade {
         return blocking.user(UserRequest.newBuilder().setName(username).build());
     }
 
-    /** Открывает серверный поток оповещений и передаёт их обработчику. */
     public Subscription subscribe(String username, Consumer<Message> onMessage) {
         requireUsername(username);
         var thread =
@@ -118,7 +107,7 @@ public final class ChatFacade {
                                     onMessage.accept(stream.next());
                                 }
                             } catch (RuntimeException ignored) {
-                                // Поток закрыт (отключение или отмена подписки).
+
                             }
                         },
                         "facade-subscribe-" + username);

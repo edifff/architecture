@@ -4,7 +4,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/** Очередь входящих сообщений для тестов домена. */
 final class Inbox {
     private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 

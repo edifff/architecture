@@ -17,18 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Контрактный тест модуля proto: сериализация/десериализация каждого типа
- * запроса и ответа обоих сервисов, литеральные номера полей (перенумерация
- * ломает тест, хотя round-trip её и не заметил бы) и наличие сгенерированных
- * дескрипторов сервисов. Docker не нужен.
- */
 final class ProtoRoundTripTest {
 
-    /** Время с микросекундной точностью — как в колонках TIMESTAMP WITH TIME ZONE. */
     private static final Instant SENT_AT = Instant.parse("2026-10-21T09:15:30.123456Z");
-
-    // --- номера полей --------------------------------------------------------
 
     @Test
     void messageFieldNumbersAreStable() {
@@ -48,15 +39,12 @@ final class ProtoRoundTripTest {
 
     @Test
     void repeatedFieldNumbersAreStable() {
-        // Repeated-поля: перенумерация здесь особенно опасна — «тихая» потеря
-        // списка на границе версий.
+
         assertEquals(1, ru.archlabs.proto.chat.MessagesResponse.MESSAGES_FIELD_NUMBER);
         assertEquals(1, ru.archlabs.proto.storage.MessagesResponse.MESSAGES_FIELD_NUMBER);
         assertEquals(1, UserStatesResponse.USERS_FIELD_NUMBER);
         assertEquals(2, ClearNotificationsRequest.MESSAGE_IDS_FIELD_NUMBER);
     }
-
-    // --- round-trip ----------------------------------------------------------
 
     @Test
     void timestampSurvivesRoundTripAtMicrosecondPrecision() throws Exception {
@@ -71,7 +59,7 @@ final class ProtoRoundTripTest {
         var parsed = roundTrip(message);
 
         assertEquals(message, parsed);
-        // Наносекунды сохраняются точно: 123456 микросекунд -> 123456000 наносекунд.
+
         assertEquals(123_456_000, parsed.getSentAt().getNanos());
         assertEquals(SENT_AT, toInstant(parsed.getSentAt()));
     }
@@ -119,7 +107,7 @@ final class ProtoRoundTripTest {
                 ru.archlabs.proto.storage.UndeliveredNotificationsRequest.newBuilder()
                         .setRecipient("olga")
                         .build());
-        // Repeated int64 внутри запроса на очистку уведомлений.
+
         roundTrip(
                 ClearNotificationsRequest.newBuilder()
                         .setRecipient("olga")
@@ -128,7 +116,6 @@ final class ProtoRoundTripTest {
         roundTrip(ru.archlabs.proto.storage.HistoryRequest.getDefaultInstance());
         roundTrip(ru.archlabs.proto.storage.UserRequest.newBuilder().setName("ivan").build());
 
-        // Repeated-ответы: история и список онлайн-пользователей.
         var history =
                 ru.archlabs.proto.storage.MessagesResponse.newBuilder()
                         .addMessages(message(1, "ivan", "раз"))
@@ -179,8 +166,6 @@ final class ProtoRoundTripTest {
         assertEquals(history, roundTrip(history));
     }
 
-    // --- дескрипторы сервисов ------------------------------------------------
-
     @Test
     void serviceDescriptorsExist() {
         var storage = ChatStorageGrpc.getServiceDescriptor();
@@ -202,9 +187,6 @@ final class ProtoRoundTripTest {
                 "Subscribe должна быть серверным потоком");
     }
 
-    // --- helpers -------------------------------------------------------------
-
-    /** Round-trip через байты: то, что уходит в wire, должно вернуться равным. */
     @SuppressWarnings("unchecked")
     private static <T extends Message> T roundTrip(T message)
             throws com.google.protobuf.InvalidProtocolBufferException {

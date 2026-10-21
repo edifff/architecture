@@ -7,7 +7,6 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
-/** Минимальный HTTP-эндпоинт {@code /metrics} для скрейпа Prometheus (JDK HttpServer). */
 public final class MetricsServer implements AutoCloseable {
     private final HttpServer server;
 

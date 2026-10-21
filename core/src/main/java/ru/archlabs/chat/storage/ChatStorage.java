@@ -16,10 +16,8 @@ public interface ChatStorage extends AutoCloseable {
 
     Message append(String sender, String text, Instant sentAt);
 
-    /** Накопленные, ещё не доставленные оповещения пользователя в порядке отправки. */
     List<Message> undeliveredNotifications(String recipient);
 
-    /** Удаляет доставленные оповещения пользователя по идентификаторам сообщений. */
     void clearNotifications(String recipient, List<Long> messageIds);
 
     List<Message> history();
@@ -28,7 +26,6 @@ public interface ChatStorage extends AutoCloseable {
 
     List<UserState> onlineUsersWithNotificationsEnabled();
 
-    /** Сбрасывает признак «онлайн» у всех пользователей (после рестарта никто не онлайн). */
     void resetOnlineUsers();
 
     @Override

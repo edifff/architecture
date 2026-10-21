@@ -252,7 +252,6 @@ public final class PostgresChatStorage implements ChatStorage {
         }
     }
 
-    /** Сбрасывает признак «онлайн» у всех пользователей. Вызывается chat-сервисом при старте. */
     @Override
     public void resetOnlineUsers() {
         transaction(

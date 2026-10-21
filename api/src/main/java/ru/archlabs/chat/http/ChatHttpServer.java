@@ -15,11 +15,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Точка входа (initial access) в программу: HTTP-сервер на Netty. Клиентский
- * протокол — HTTP + JSON + Server-Sent Events; работа с доменом идёт через
- * {@link ChatFacade} по gRPC.
- */
 public final class ChatHttpServer implements AutoCloseable {
     private final ChatFacade facade;
     private final int port;

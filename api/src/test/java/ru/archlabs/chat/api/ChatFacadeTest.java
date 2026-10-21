@@ -14,10 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/**
- * Facade отдельно: проверяем, что разобранное сообщение превращается в правильный
- * protobuf-запрос (а не в вызов домена напрямую), и что проверки срабатывают до RPC.
- */
 final class ChatFacadeTest {
     private FakeChatService fake;
     private Server server;

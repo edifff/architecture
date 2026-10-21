@@ -44,8 +44,7 @@ public final class ChatServerImpl implements ChatServer, MetricsSource {
             activeSessions.put(username, new ActiveSession(session, onMessage));
             backlog = storage.undeliveredNotifications(username);
         }
-        // Накопленные за время отсутствия оповещения отдаём в том же порядке, в котором
-        // они были отправлены, — уже после выхода из синхронизированного блока.
+
         deliver(backlog, onMessage);
         if (!backlog.isEmpty()) {
             synchronized (this) {
@@ -124,7 +123,6 @@ public final class ChatServerImpl implements ChatServer, MetricsSource {
         }
     }
 
-    /** Отдаёт накопленные оповещения обработчику и учитывает фактически доставленные. */
     private void deliver(List<Message> backlog, Consumer<Message> recipient) {
         int delivered = 0;
         for (var message : backlog) {

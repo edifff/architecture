@@ -6,7 +6,6 @@ import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import ru.archlabs.chat.metrics.RpcMetrics;
 
-/** Считает число и латентность gRPC-вызовов слоя хранения. */
 final class MetricsInterceptor implements ServerInterceptor {
     private static final String SERVICE = "storage";
     private final RpcMetrics metrics;

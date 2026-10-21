@@ -5,7 +5,6 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 
-/** Настраивает конвейер Netty для каждого входящего соединения. */
 final class ChatChannelInitializer extends ChannelInitializer<SocketChannel> {
     private final ChatHttpServer server;
 

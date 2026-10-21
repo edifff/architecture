@@ -20,11 +20,6 @@ import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * HTTP-слой Netty: маршрутизация запросов клиента. Вся работа с доменом идёт через
- * входной элемент {@link ru.archlabs.chat.api.ChatFacade} (разбор, проверка,
- * конвертация в protobuf), поэтому сам обработчик не знает о gRPC-деталях.
- */
 final class ChatServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
     private static final long KEEP_ALIVE_NANOS = TimeUnit.SECONDS.toNanos(15);
     private static final long POLL_DELAY_MILLIS = 100L;

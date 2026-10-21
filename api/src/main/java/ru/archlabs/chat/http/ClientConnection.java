@@ -6,10 +6,6 @@ import ru.archlabs.proto.common.Message;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-/**
- * Состояние одного HTTP-клиента: очередь оповещений, которую вычитывает SSE-поток,
- * и подписка на gRPC-поток chat-сервиса.
- */
 final class ClientConnection {
     private static final int CAPACITY = 10_000;
 

@@ -2,7 +2,6 @@ package ru.archlabs.chat;
 
 import java.util.List;
 
-/** Клиентская сессия доменного слоя. Вынесена из ChatServerImpl (без вложенных классов). */
 final class ChatSessionImpl implements ChatSession {
     private final ChatServerImpl server;
     private final String username;

@@ -29,11 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Доменный слой как gRPC-сервис. Оборачивает {@link ChatServer} (домен) и хранит
- * состояние, которое раньше жило в HTTP-слое: активные сессии и очереди доставки.
- * Клиенты (входной элемент) видят только контракт {@code chat.ChatService}.
- */
 public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     private static final int QUEUE_CAPACITY = 10_000;
 
@@ -209,11 +204,6 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
                 .build();
     }
 
-    /**
-     * Маппинг доменных исключений на gRPC-статусы. {@code alreadyExists} задаёт статус
-     * для {@link IllegalStateException}, потому что его смысл зависит от RPC
-     * (Connect — ALREADY_EXISTS, остальные — FAILED_PRECONDITION).
-     */
     private static StatusRuntimeException map(RuntimeException exception, Status.Code alreadyExists) {
         var message = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
         if (exception instanceof IllegalArgumentException) {

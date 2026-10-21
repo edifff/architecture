@@ -15,7 +15,6 @@ import ru.archlabs.proto.common.Empty;
 import ru.archlabs.proto.common.Message;
 import ru.archlabs.proto.common.UserState;
 
-/** Фейковый gRPC-сервис чата для тестов входного элемента (без сети и БД). */
 final class FakeChatService extends ChatServiceGrpc.ChatServiceImplBase {
     final UserState user =
             UserState.newBuilder()
