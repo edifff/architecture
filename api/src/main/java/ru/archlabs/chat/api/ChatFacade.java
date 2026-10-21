@@ -26,35 +26,62 @@ public final class ChatFacade {
         var parsed = UserMessage.parse(userMessage);
         requireUsername(parsed.username());
         return switch (parsed.operation()) {
-            case CONNECT -> {
-                var user = connect(parsed.username());
-                yield "connected " + user.getName() + " online=" + user.getOnline();
-            }
-            case DISCONNECT -> {
-                disconnect(parsed.username());
-                yield "disconnected " + parsed.username();
-            }
-            case SEND -> {
-                var message = send(parsed.username(), parsed.text());
-                yield "sent #" + message.getId() + " " + message.getSender() + ": " + message.getText();
-            }
-            case HISTORY -> {
-                var history = history(parsed.username());
-                yield history.stream()
-                        .map(message -> "#" + message.getId() + " " + message.getSender() + ": " + message.getText())
-                        .reduce((left, right) -> left + "\n" + right)
-                        .orElse("");
-            }
-            case SET_NOTIFICATIONS -> {
-                setNotificationsEnabled(parsed.username(), parsed.enabled());
-                yield "notifications " + parsed.enabled() + " for " + parsed.username();
-            }
-            case USER -> {
-                var user = user(parsed.username());
-                yield "user " + user.getName() + " online=" + user.getOnline()
-                        + " notifications=" + user.getNotificationsEnabled();
-            }
+            case CONNECT -> connectText(parsed.username());
+            case DISCONNECT -> disconnectText(parsed.username());
+            case SEND -> sendText(parsed.username(), parsed.text());
+            case HISTORY -> historyText(parsed.username());
+            case SET_NOTIFICATIONS -> notificationsText(parsed.username(), parsed.enabled());
+            case USER -> userText(parsed.username());
         };
+    }
+
+    private String connectText(String username) {
+        var user = connect(username);
+        return "connected " + user.getName() + " online=" + user.getOnline();
+    }
+
+    private String disconnectText(String username) {
+        disconnect(username);
+        return "disconnected " + username;
+    }
+
+    private String sendText(String username, String text) {
+        var message = send(username, text);
+        return "sent #"
+                + message.getId()
+                + " "
+                + message.getSender()
+                + ": "
+                + message.getText();
+    }
+
+    private String historyText(String username) {
+        return history(username).stream()
+                .map(
+                        message ->
+                                "#"
+                                        + message.getId()
+                                        + " "
+                                        + message.getSender()
+                                        + ": "
+                                        + message.getText())
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private String notificationsText(String username, boolean enabled) {
+        setNotificationsEnabled(username, enabled);
+        return "notifications " + enabled + " for " + username;
+    }
+
+    private String userText(String username) {
+        var user = user(username);
+        return "user "
+                + user.getName()
+                + " online="
+                + user.getOnline()
+                + " notifications="
+                + user.getNotificationsEnabled();
     }
 
     public UserState connect(String username) {
