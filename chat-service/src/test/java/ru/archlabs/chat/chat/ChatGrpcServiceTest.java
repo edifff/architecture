@@ -1,0 +1,153 @@
+package ru.archlabs.chat.chat;
+
+import io.grpc.ManagedChannel;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.inprocess.InProcessChannelBuilder;
+import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.StreamObserver;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import ru.archlabs.chat.ChatServerImpl;
+import ru.archlabs.chat.InMemoryChatStorage;
+import ru.archlabs.proto.chat.ChatServiceGrpc;
+import ru.archlabs.proto.chat.ConnectRequest;
+import ru.archlabs.proto.chat.DisconnectRequest;
+import ru.archlabs.proto.chat.HistoryRequest;
+import ru.archlabs.proto.chat.SendRequest;
+import ru.archlabs.proto.chat.SetNotificationsEnabledRequest;
+import ru.archlabs.proto.chat.SubscribeRequest;
+import ru.archlabs.proto.chat.UserRequest;
+import ru.archlabs.proto.common.Message;
+
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** Доменный слой отдельно: gRPC ChatService поверх ChatServerImpl с in-memory хранилищем. */
+final class ChatGrpcServiceTest {
+    private ChatServerImpl chat;
+    private io.grpc.Server server;
+    private ManagedChannel channel;
+    private ChatServiceGrpc.ChatServiceBlockingStub blocking;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        var name = InProcessServerBuilder.generateName();
+        chat = new ChatServerImpl(new InMemoryChatStorage());
+        server =
+                InProcessServerBuilder.forName(name)
+                        .directExecutor()
+                        .addService(new ChatGrpcService(chat))
+                        .build()
+                        .start();
+        channel = InProcessChannelBuilder.forName(name).directExecutor().build();
+        blocking = ChatServiceGrpc.newBlockingStub(channel);
+    }
+
+    @AfterEach
+    void tearDown() {
+        channel.shutdownNow();
+        server.shutdownNow();
+        chat.close();
+    }
+
+    @Test
+    void connectReturnsOnlineUser() {
+        var response = blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+
+        assertTrue(response.getUser().getOnline());
+        assertTrue(response.getUser().getNotificationsEnabled());
+        assertTrue(response.getUser().hasLastConnected());
+    }
+
+    @Test
+    void duplicateConnectFailsWithAlreadyExists() {
+        blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () -> blocking.connect(ConnectRequest.newBuilder().setName("ivan").build()));
+        assertEquals(Status.Code.ALREADY_EXISTS, exception.getStatus().getCode());
+    }
+
+    @Test
+    void sendDeliversToSubscriber() throws Exception {
+        blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+        var received = new LinkedBlockingQueue<Message>();
+        ChatServiceGrpc.newStub(channel)
+                .subscribe(
+                        SubscribeRequest.newBuilder().setName("ivan").build(),
+                        new StreamObserver<>() {
+                            @Override
+                            public void onNext(Message message) {
+                                received.add(message);
+                            }
+
+                            @Override
+                            public void onError(Throwable throwable) {
+                            }
+
+                            @Override
+                            public void onCompleted() {
+                            }
+                        });
+        blocking.connect(ConnectRequest.newBuilder().setName("andray").build());
+
+        var sent =
+                blocking.send(
+                        SendRequest.newBuilder().setName("andray").setText("hi").build());
+
+        var delivered = received.poll(5, TimeUnit.SECONDS);
+        assertNotNull(delivered);
+        assertEquals(sent.getId(), delivered.getId());
+        assertEquals("andray", delivered.getSender());
+        assertEquals("hi", delivered.getText());
+    }
+
+    @Test
+    void historyRequiresNotificationsDisabled() {
+        blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+        blocking.send(SendRequest.newBuilder().setName("ivan").setText("hello").build());
+
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () -> blocking.history(HistoryRequest.newBuilder().setName("ivan").build()));
+        assertEquals(Status.Code.FAILED_PRECONDITION, exception.getStatus().getCode());
+
+        blocking.setNotificationsEnabled(
+                SetNotificationsEnabledRequest.newBuilder().setName("ivan").setEnabled(false).build());
+
+        var history = blocking.history(HistoryRequest.newBuilder().setName("ivan").build());
+        assertEquals(1, history.getMessagesCount());
+        assertEquals("hello", history.getMessages(0).getText());
+    }
+
+    @Test
+    void unknownUserFailsWithNotFound() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () -> blocking.user(UserRequest.newBuilder().setName("nobody").build()));
+        assertEquals(Status.Code.NOT_FOUND, exception.getStatus().getCode());
+    }
+
+    @Test
+    void disconnectMarksUserOffline() {
+        blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+
+        blocking.disconnect(DisconnectRequest.newBuilder().setName("ivan").build());
+
+        var user = blocking.user(UserRequest.newBuilder().setName("ivan").build());
+        assertFalse(user.getOnline());
+    }
+}

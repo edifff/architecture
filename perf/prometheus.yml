@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # dns_sd: Prometheus сам находит все реплики за DNS-именем сервиса,
+  # поэтому масштабирование compose не требует правки конфига.
+  - job_name: chat
+    dns_sd_configs:
+      - names: ["chat"]
+        type: A
+        port: 9101
+
+  - job_name: storage
+    dns_sd_configs:
+      - names: ["storage"]
+        type: A
+        port: 9102

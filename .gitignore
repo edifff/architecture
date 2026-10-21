@@ -37,3 +37,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+# transient perf artifacts
+perf/k6/summary-*.json

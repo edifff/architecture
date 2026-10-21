@@ -10,13 +10,19 @@
     <packaging>pom</packaging>
 
     <!-- Реактор многоуровневой архитектуры:
-         proto    — общий контракт (protobuf + кодоген gRPC);
-         app      — существующее приложение (HTTP-фронтенд + чат + хранилище),
-                    перенесено сюда без изменений. -->
+         proto            — общий контракт (protobuf + кодоген gRPC);
+         core             — доменное ядро (модели, интерфейсы, ChatServerImpl);
+         storage-service  — слой хранения: gRPC + JDBC/PostgreSQL;
+         chat-service     — доменный слой: gRPC поверх ChatServerImpl;
+         api              — входной элемент: Facade (разбор, проверка,
+                            конвертация в protobuf) и gRPC-клиент к chat. -->
 
     <modules>
         <module>proto</module>
-        <module>app</module>
+        <module>core</module>
+        <module>storage-service</module>
+        <module>chat-service</module>
+        <module>api</module>
     </modules>
 
     <properties>

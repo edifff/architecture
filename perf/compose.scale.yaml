@@ -1,0 +1,11 @@
+services:
+  # Для масштабирования фиксированные host-порты мешают: несколько реплик
+  # не могут занять один порт. Внутри сети сервисы доступны по DNS-именам.
+  chat:
+    ports: !reset []
+  storage:
+    ports: !reset []
+  prometheus:
+    ports: !reset []
+  grafana:
+    ports: !reset []
