@@ -131,4 +131,101 @@ final class ChatGrpcServiceTest {
         var user = blocking.user(UserRequest.newBuilder().setName("ivan").build());
         assertFalse(user.getOnline());
     }
+
+    @Test
+    void sendWithoutSessionFailsWithFailedPrecondition() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () ->
+                                blocking.send(
+                                        SendRequest.newBuilder()
+                                                .setName("ghost")
+                                                .setText("hi")
+                                                .build()));
+
+        assertEquals(Status.Code.FAILED_PRECONDITION, exception.getStatus().getCode());
+    }
+
+    @Test
+    void sendBlankTextFailsWithInvalidArgument() {
+        blocking.connect(ConnectRequest.newBuilder().setName("ivan").build());
+
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () ->
+                                blocking.send(
+                                        SendRequest.newBuilder()
+                                                .setName("ivan")
+                                                .setText("   ")
+                                                .build()));
+
+        assertEquals(Status.Code.INVALID_ARGUMENT, exception.getStatus().getCode());
+    }
+
+    @Test
+    void connectBlankNameFailsWithInvalidArgument() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () -> blocking.connect(ConnectRequest.newBuilder().setName("   ").build()));
+
+        assertEquals(Status.Code.INVALID_ARGUMENT, exception.getStatus().getCode());
+    }
+
+    @Test
+    void disconnectUnknownFailsWithNotFound() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () ->
+                                blocking.disconnect(
+                                        DisconnectRequest.newBuilder().setName("ghost").build()));
+
+        assertEquals(Status.Code.NOT_FOUND, exception.getStatus().getCode());
+    }
+
+    @Test
+    void subscribeWithoutSessionFailsWithFailedPrecondition() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () ->
+                                blocking.subscribe(
+                                                SubscribeRequest.newBuilder()
+                                                        .setName("ghost")
+                                                        .build())
+                                        .hasNext());
+
+        assertEquals(Status.Code.FAILED_PRECONDITION, exception.getStatus().getCode());
+    }
+
+    @Test
+    void storageFailureMapsToInternal() throws Exception {
+        var name = InProcessServerBuilder.generateName();
+        var failingChat = new ChatServerImpl(new FailingChatStorage());
+        var failingServer =
+                InProcessServerBuilder.forName(name)
+                        .directExecutor()
+                        .addService(new ChatGrpcService(failingChat))
+                        .build()
+                        .start();
+        var failingChannel = InProcessChannelBuilder.forName(name).directExecutor().build();
+        try {
+            var stub = ChatServiceGrpc.newBlockingStub(failingChannel);
+            var exception =
+                    assertThrows(
+                            StatusRuntimeException.class,
+                            () ->
+                                    stub.connect(
+                                            ConnectRequest.newBuilder().setName("ivan").build()));
+
+            assertEquals(Status.Code.INTERNAL, exception.getStatus().getCode());
+        } finally {
+            failingChannel.shutdownNow();
+            failingServer.shutdownNow();
+            failingChat.close();
+        }
+    }
 }

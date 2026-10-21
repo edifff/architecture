@@ -51,7 +51,12 @@ final class ChatServerHandler extends SimpleChannelInboundHandler<FullHttpReques
         } catch (IllegalStateException exception) {
             writeError(ctx, HttpResponseStatus.CONFLICT, exception.getMessage());
         } catch (IllegalArgumentException exception) {
-            writeError(ctx, HttpResponseStatus.BAD_REQUEST, exception.getMessage());
+            var message = exception.getMessage();
+            var status =
+                    message != null && message.startsWith("Unknown user")
+                            ? HttpResponseStatus.NOT_FOUND
+                            : HttpResponseStatus.BAD_REQUEST;
+            writeError(ctx, status, message);
         } catch (RuntimeException exception) {
             writeError(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR, exception.getMessage());
         }

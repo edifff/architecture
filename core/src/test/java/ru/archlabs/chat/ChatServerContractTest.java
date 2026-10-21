@@ -5,12 +5,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -132,5 +129,77 @@ abstract class ChatServerContractTest {
         var history = ivan.history();
         assertEquals(List.of(1L, 2L), history.stream().map(Message::id).toList());
         assertEquals(List.of("first", "second"), history.stream().map(Message::text).toList());
+    }
+
+    @Test
+    void rejectsBlankUsername() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> server().connect("   ", ignored -> {
+                }));
+    }
+
+    @Test
+    void rejectsBlankMessage() {
+        var ivan = server().connect("ivan", ignored -> {
+        });
+
+        assertThrows(IllegalArgumentException.class, () -> ivan.send("   "));
+    }
+
+    @Test
+    void rejectsOperationsAfterSessionClosed() {
+        var ivan = server().connect("ivan", ignored -> {
+        });
+        ivan.close();
+
+        assertThrows(IllegalStateException.class, () -> ivan.send("hello"));
+        assertThrows(IllegalStateException.class, ivan::history);
+        assertThrows(IllegalStateException.class, () -> ivan.setNotificationsEnabled(false));
+    }
+
+    @Test
+    void closingSessionTwiceIsIdempotent() {
+        var ivan = server().connect("ivan", ignored -> {
+        });
+        ivan.close();
+        ivan.close();
+
+        assertFalse(server().user("ivan").online());
+    }
+
+    @Test
+    void unknownUserStateThrows() {
+        assertThrows(IllegalArgumentException.class, () -> server().user("nobody"));
+    }
+
+    @Test
+    void concurrentConnectAllowsExactlyOne() throws Exception {
+        var barrier = new CyclicBarrier(2);
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(() -> attemptConnect(barrier));
+            var second = pool.submit(() -> attemptConnect(barrier));
+            var outcomes =
+                    List.of(
+                            first.get(5, TimeUnit.SECONDS),
+                            second.get(5, TimeUnit.SECONDS));
+
+            assertEquals(1, outcomes.stream().filter("ok"::equals).count());
+            assertEquals(1, outcomes.stream().filter("rejected"::equals).count());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private String attemptConnect(CyclicBarrier barrier) throws Exception {
+        barrier.await();
+        try {
+            server().connect("race", ignored -> {
+            });
+            return "ok";
+        } catch (IllegalStateException expected) {
+            return "rejected";
+        }
     }
 }

@@ -172,6 +172,49 @@ final class StorageGrpcServiceTest {
         assertEquals(false, user.getNotificationsEnabled());
     }
 
+    @Test
+    void appendWithUnknownSenderFailsInternally() {
+        var exception =
+                assertThrows(
+                        StatusRuntimeException.class,
+                        () ->
+                                blocking.append(
+                                        AppendRequest.newBuilder()
+                                                .setSender("ghost")
+                                                .setText("hello")
+                                                .setSentAt(timestamp(Instant.now()))
+                                                .build()));
+
+        assertEquals(Status.Code.INTERNAL, exception.getStatus().getCode());
+    }
+
+    @Test
+    void duplicateConnectFailsWithFailedPrecondition() {
+        var request =
+                ConnectRequest.newBuilder().setName("ivan").setAt(timestamp(Instant.now())).build();
+        blocking.connect(request);
+
+        var exception =
+                assertThrows(StatusRuntimeException.class, () -> blocking.connect(request));
+
+        assertEquals(Status.Code.FAILED_PRECONDITION, exception.getStatus().getCode());
+    }
+
+    @Test
+    void clearNotificationsForUnknownRecipientIsNoop() {
+        blocking.clearNotifications(
+                ClearNotificationsRequest.newBuilder()
+                        .setRecipient("nobody")
+                        .addMessageIds(1)
+                        .build());
+    }
+
+    @Test
+    void historyOnEmptyDatabaseIsEmpty() {
+        assertEquals(
+                0, blocking.history(HistoryRequest.getDefaultInstance()).getMessagesCount());
+    }
+
     private static Timestamp timestamp(Instant instant) {
         return Timestamp.newBuilder()
                 .setSeconds(instant.getEpochSecond())

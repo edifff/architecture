@@ -24,6 +24,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ChatHttpServerTest {
@@ -141,6 +142,141 @@ final class ChatHttpServerTest {
     @Test
     void unknownRouteReturnsNotFound() throws Exception {
         assertEquals(404, get("/nonsense").statusCode());
+    }
+
+    @Test
+    void malformedJsonReturnsBadRequest() throws Exception {
+        post("/sessions/ivan", "");
+
+        assertEquals(400, post("/messages/ivan", "{not-json").statusCode());
+    }
+
+    @Test
+    void sendWithoutSessionReturnsConflict() throws Exception {
+        var response = post("/messages/ghost", ChatJson.write(new SendMessageRequest("hi")));
+
+        assertEquals(409, response.statusCode());
+    }
+
+    @Test
+    void blankTextReturnsBadRequest() throws Exception {
+        post("/sessions/ivan", "");
+
+        var response = post("/messages/ivan", ChatJson.write(new SendMessageRequest("   ")));
+
+        assertEquals(400, response.statusCode());
+    }
+
+    @Test
+    void historyConflictIsMappedFromGrpc() throws Exception {
+        post("/sessions/ivan", "");
+        fake.failure = io.grpc.Status.Code.FAILED_PRECONDITION;
+
+        assertEquals(409, get("/messages/ivan").statusCode());
+    }
+
+    @Test
+    void unavailableChatServiceReturnsServiceUnavailable() throws Exception {
+        post("/sessions/ivan", "");
+        fake.failure = io.grpc.Status.Code.UNAVAILABLE;
+
+        var response = post("/messages/ivan", ChatJson.write(new SendMessageRequest("hi")));
+
+        assertEquals(503, response.statusCode());
+    }
+
+    @Test
+    void disconnectUnknownReturnsNotFound() throws Exception {
+        assertEquals(404, delete("/sessions/ghost").statusCode());
+    }
+
+    @Test
+    void unknownMethodReturnsNotFound() throws Exception {
+        var request =
+                HttpRequest.newBuilder(base.resolve("/sessions/ivan"))
+                        .method("PATCH", HttpRequest.BodyPublishers.noBody())
+                        .build();
+
+        assertEquals(
+                404,
+                client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+
+    @Test
+    void eventsUnknownUserReturnsNotFound() throws Exception {
+        var request = HttpRequest.newBuilder(base.resolve("/events/ghost")).GET().build();
+
+        assertEquals(
+                404,
+                client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+
+    @Test
+    void eventsStreamStartsWithConnectedComment() throws Exception {
+        post("/sessions/ivan", "");
+        var request =
+                HttpRequest.newBuilder(base.resolve("/events/ivan"))
+                        .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
+                        .GET()
+                        .build();
+        var lines = client.send(request, HttpResponse.BodyHandlers.ofLines()).body();
+        try {
+            assertEquals(": connected", lines.findFirst().orElseThrow());
+        } finally {
+            lines.close();
+        }
+    }
+
+    @Test
+    void eventsStreamDeliversPushedMessage() throws Exception {
+        post("/sessions/ivan", "");
+        var request =
+                HttpRequest.newBuilder(base.resolve("/events/ivan"))
+                        .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
+                        .GET()
+                        .build();
+        var lines = client.send(request, HttpResponse.BodyHandlers.ofLines()).body();
+        try {
+            var iterator = lines.iterator();
+            assertEquals(": connected", iterator.next());
+            fake.push(FakeChatService.message(42, "ping"));
+
+            String data = null;
+            while (iterator.hasNext()) {
+                var line = iterator.next();
+                if (line.startsWith("data:")) {
+                    data = line;
+                    break;
+                }
+            }
+            assertNotNull(data);
+            assertTrue(data.contains("\"text\":\"ping\""));
+        } finally {
+            lines.close();
+        }
+    }
+
+    @Test
+    void eventsStreamSurvivesAbruptClientDisconnect() throws Exception {
+        post("/sessions/ivan", "");
+        var request =
+                HttpRequest.newBuilder(base.resolve("/events/ivan"))
+                        .header("Accept", ChatProtocol.CONTENT_TYPE_EVENT_STREAM)
+                        .GET()
+                        .build();
+        var lines = client.send(request, HttpResponse.BodyHandlers.ofLines()).body();
+        assertEquals(": connected", lines.findFirst().orElseThrow());
+        lines.close();
+
+        assertEquals(200, get("/users/ivan").statusCode());
+    }
+
+    @Test
+    void notificationsWithoutSessionReturnsConflict() throws Exception {
+        var response =
+                put("/notifications/ghost", ChatJson.write(new NotificationsRequest(false)));
+
+        assertEquals(409, response.statusCode());
     }
 
     private HttpResponse<String> get(String path) throws Exception {
