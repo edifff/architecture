@@ -1,4 +1,4 @@
-package ru.archlabs.chat.http;
+package ru.archlabs.chat.api;
 
 import com.google.protobuf.Timestamp;
 import ru.archlabs.proto.common.UserState;

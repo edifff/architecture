@@ -11,8 +11,7 @@ import ru.archlabs.proto.chat.MessagesResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ChatFacadeTest {
     private FakeChatService fake;
@@ -41,39 +40,56 @@ final class ChatFacadeTest {
     }
 
     @Test
-    void convertsConnectToProtobufRequest() {
-        var result = facade.handle("CONNECT ivan");
+    void parsesConnectAndOpensSession() {
+        var response = facade.handle(new FacadeRequest("POST", "/sessions/ivan", ""));
 
+        assertEquals(201, response.status());
+        assertEquals(FacadeAction.OPEN, response.action());
+        assertEquals("ivan", response.username());
         assertEquals("ivan", fake.lastConnect.getName());
-        assertEquals("connected ivan online=true", result);
     }
 
     @Test
-    void convertsSendToProtobufRequest() {
-        var result = facade.handle("SEND ivan hello world");
+    void parsesSendJsonBodyAndConvertsToProtobuf() {
+        var response =
+                facade.handle(
+                        new FacadeRequest(
+                                "POST", "/messages/ivan", "{\"text\":\"hello world\"}"));
 
+        assertEquals(201, response.status());
         assertEquals("ivan", fake.lastSend.getName());
         assertEquals("hello world", fake.lastSend.getText());
-        assertEquals("sent #7 ivan: hello world", result);
+        assertTrue(response.body().contains("hello world"));
     }
 
     @Test
-    void convertsNotificationsFlagToProtobuf() {
-        facade.handle("SET_NOTIFICATIONS ivan false");
+    void parsesNotificationsFlag() {
+        var response =
+                facade.handle(
+                        new FacadeRequest(
+                                "PUT", "/notifications/ivan", "{\"enabled\":false}"));
 
-        assertFalse(fake.lastNotifications.getEnabled());
+        assertEquals(204, response.status());
         assertEquals("ivan", fake.lastNotifications.getName());
+        assertFalse(fake.lastNotifications.getEnabled());
     }
 
     @Test
-    void rejectsBlankTextBeforeCallingChatService() {
-        assertThrows(IllegalArgumentException.class, () -> facade.handle("SEND ivan"));
-        assertNull(fake.lastSend);
+    void parsesDisconnect() {
+        var response = facade.handle(new FacadeRequest("DELETE", "/sessions/ivan", ""));
+
+        assertEquals(204, response.status());
+        assertEquals(FacadeAction.CLOSE, response.action());
+        assertEquals("ivan", fake.lastDisconnect.getName());
     }
 
     @Test
-    void rejectsBlankUsername() {
-        assertThrows(IllegalArgumentException.class, () -> facade.connect(" "));
+    void returnsStreamActionForEvents() {
+        var response = facade.handle(new FacadeRequest("GET", "/events/ivan", ""));
+
+        assertEquals(200, response.status());
+        assertEquals(FacadeAction.STREAM, response.action());
+        assertEquals("ivan", response.username());
     }
 
     @Test
@@ -83,15 +99,72 @@ final class ChatFacadeTest {
                         .addMessages(FakeChatService.message(1, "hi"))
                         .build();
 
-        var result = facade.handle("HISTORY ivan");
+        var response = facade.handle(new FacadeRequest("GET", "/messages/ivan", ""));
 
-        assertEquals("#1 ivan: hi", result);
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"text\":\"hi\""));
     }
 
     @Test
-    void convertsDisconnectToProtobufRequest() {
-        facade.handle("DISCONNECT ivan");
+    void rejectsMalformedJson() {
+        var response =
+                facade.handle(new FacadeRequest("POST", "/messages/ivan", "{not-json"));
 
-        assertEquals("ivan", fake.lastDisconnect.getName());
+        assertEquals(400, response.status());
+    }
+
+    @Test
+    void rejectsBlankText() {
+        var response =
+                facade.handle(
+                        new FacadeRequest("POST", "/messages/ivan", "{\"text\":\"   \"}"));
+
+        assertEquals(400, response.status());
+    }
+
+    @Test
+    void rejectsBlankUsername() {
+        var response = facade.handle(new FacadeRequest("GET", "/users/", ""));
+
+        assertEquals(400, response.status());
+    }
+
+    @Test
+    void unknownRouteReturnsNotFound() {
+        var response = facade.handle(new FacadeRequest("GET", "/nonsense", ""));
+
+        assertEquals(404, response.status());
+    }
+
+    @Test
+    void unknownMethodReturnsNotFound() {
+        var response = facade.handle(new FacadeRequest("PATCH", "/sessions/ivan", ""));
+
+        assertEquals(404, response.status());
+    }
+
+    @Test
+    void unknownUserMapsToNotFound() {
+        var response = facade.handle(new FacadeRequest("GET", "/users/nobody", ""));
+
+        assertEquals(404, response.status());
+    }
+
+    @Test
+    void conflictMapsTo409() {
+        fake.failure = io.grpc.Status.Code.FAILED_PRECONDITION;
+
+        var response = facade.handle(new FacadeRequest("GET", "/messages/ivan", ""));
+
+        assertEquals(409, response.status());
+    }
+
+    @Test
+    void unavailableMapsTo503() {
+        fake.failure = io.grpc.Status.Code.UNAVAILABLE;
+
+        var response = facade.handle(new FacadeRequest("GET", "/messages/ivan", ""));
+
+        assertEquals(503, response.status());
     }
 }

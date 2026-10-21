@@ -1,4 +1,4 @@
-package ru.archlabs.chat.http;
+package ru.archlabs.chat.api;
 
 record Route(String section, String username) {
 }

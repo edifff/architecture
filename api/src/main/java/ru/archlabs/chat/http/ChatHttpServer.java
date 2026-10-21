@@ -6,7 +6,6 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import ru.archlabs.chat.api.ChatFacade;
-import ru.archlabs.proto.common.UserState;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -49,33 +48,22 @@ public final class ChatHttpServer implements AutoCloseable {
         return facade;
     }
 
-    synchronized ClientConnection connect(String username) {
+    synchronized void open(String username) {
         if (connections.containsKey(username)) {
             throw new IllegalStateException("User is already connected: " + username);
         }
-        facade.connect(username);
-        var connection = new ClientConnection(username);
-        connections.put(username, connection);
-        return connection;
+        connections.put(username, new ClientConnection(username));
     }
 
-    synchronized void disconnect(String username) {
+    synchronized void closeConnection(String username) {
         var connection = connections.remove(username);
-        if (connection == null) {
-            throw new IllegalArgumentException("Unknown user: " + username);
-        }
-        if (connection.subscription() != null) {
+        if (connection != null && connection.subscription() != null) {
             connection.subscription().close();
         }
-        facade.disconnect(username);
     }
 
     ClientConnection connection(String username) {
         return connections.get(username);
-    }
-
-    UserState user(String username) {
-        return facade.user(username);
     }
 
     @Override

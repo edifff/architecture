@@ -40,18 +40,23 @@ HTTP + JSON + SSE. Входной элемент — Facade — разбирае
 
 ## Входной элемент (Facade)
 
-`api/src/main/java/ru/archlabs/chat/api/ChatFacade.java`:
+`api/src/main/java/ru/archlabs/chat/api/ChatFacade.java` — единственный входной
+элемент. Netty только принимает байты и отдаёт ответ; вся работа с пользовательским
+сообщением — в Facade:
 
-1. `UserMessage.parse` — разбор строки `<OPERATION> <username> [аргумент]`;
-2. `ChatFacade` — проверка (непустые имя/текст, корректный флаг) и конвертация
-   в protobuf-запросы `chat.ChatService`;
-3. вызов chat-сервиса по gRPC.
+1. **разбор** `FacadeRequest(method, path, body)`: маршрут `/{section}/{username}`
+   и JSON-тела (`SendMessageRequest`, `NotificationsRequest`);
+2. **проверка**: непустые имя/текст, корректный JSON, допустимый метод;
+3. **конвертация** в protobuf-запросы `chat.ChatService` и вызов по gRPC;
+4. **ответ**: `FacadeResponse` (HTTP-статус, тело, действие `OPEN`/`CLOSE`/`STREAM`),
+   который Netty просто записывает в канал.
 
 Пример:
 
 ```java
-var message = UserMessage.parse("SEND ivan hello world"); // разбор
-facade.send(message.username(), message.text());           // проверка + protobuf + gRPC
+var response = facade.handle(
+        new FacadeRequest("POST", "/messages/ivan", "{\"text\":\"hello\"}"));
+// response.status() == 201, response.body() == {"id":...,"text":"hello",...}
 ```
 
 ## Тесты по слоям (отдельно)
@@ -62,7 +67,7 @@ facade.send(message.username(), message.text());           // проверка +
 | `core` | `InMemoryChatServerTest`, `ChatMetricsTest` | доменная логика без транспорта и БД |
 | `storage-service` | `PostgresStorageTest`, `StorageGrpcServiceTest` | JDBC-хранилище и gRPC-контракт против реального PostgreSQL (Testcontainers) |
 | `chat-service` | `ChatGrpcServiceTest` | gRPC-контракт домена поверх in-memory хранилища + поток `Subscribe` |
-| `api` | `UserMessageTest`, `ChatFacadeTest`, `ChatHttpServerTest` | разбор/проверка/конвертация в protobuf; Netty HTTP поверх in-process gRPC |
+| `api` | `ChatFacadeTest`, `ChatHttpServerTest` | разбор запроса, проверка, конвертация в protobuf; Netty HTTP поверх in-process gRPC |
 
 ```shell
 mvn test        # весь реактор; Testcontainers требует Docker

@@ -1,4 +1,4 @@
-package ru.archlabs.chat.http;
+package ru.archlabs.chat.api;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

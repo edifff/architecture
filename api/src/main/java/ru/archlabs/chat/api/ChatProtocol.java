@@ -1,4 +1,4 @@
-package ru.archlabs.chat.http;
+package ru.archlabs.chat.api;
 
 public final class ChatProtocol {
     public static final String CONTENT_TYPE_JSON = "application/json";

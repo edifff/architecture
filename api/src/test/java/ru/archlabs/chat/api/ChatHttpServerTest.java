@@ -8,13 +8,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ru.archlabs.chat.http.ChatHttpServer;
-import ru.archlabs.chat.http.ChatJson;
-import ru.archlabs.chat.http.ChatProtocol;
-import ru.archlabs.chat.http.ErrorPayload;
-import ru.archlabs.chat.http.MessagePayload;
-import ru.archlabs.chat.http.NotificationsRequest;
-import ru.archlabs.chat.http.SendMessageRequest;
-import ru.archlabs.chat.http.UserPayload;
 import ru.archlabs.proto.chat.MessagesResponse;
 
 import java.net.URI;
@@ -152,7 +145,9 @@ final class ChatHttpServerTest {
     }
 
     @Test
-    void sendWithoutSessionReturnsConflict() throws Exception {
+    void sendConflictReturnsConflict() throws Exception {
+        fake.failure = io.grpc.Status.Code.FAILED_PRECONDITION;
+
         var response = post("/messages/ghost", ChatJson.write(new SendMessageRequest("hi")));
 
         assertEquals(409, response.statusCode());
@@ -187,6 +182,8 @@ final class ChatHttpServerTest {
 
     @Test
     void disconnectUnknownReturnsNotFound() throws Exception {
+        fake.failure = io.grpc.Status.Code.NOT_FOUND;
+
         assertEquals(404, delete("/sessions/ghost").statusCode());
     }
 
@@ -272,7 +269,9 @@ final class ChatHttpServerTest {
     }
 
     @Test
-    void notificationsWithoutSessionReturnsConflict() throws Exception {
+    void notificationsConflictReturnsConflict() throws Exception {
+        fake.failure = io.grpc.Status.Code.FAILED_PRECONDITION;
+
         var response =
                 put("/notifications/ghost", ChatJson.write(new NotificationsRequest(false)));
 

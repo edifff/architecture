@@ -1,4 +1,4 @@
-package ru.archlabs.chat.http;
+package ru.archlabs.chat.api;
 
 import ru.archlabs.proto.common.Message;
 
