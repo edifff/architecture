@@ -12,15 +12,18 @@ FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /build
 
 COPY pom.xml .
-COPY src ./src
+COPY proto ./proto
+COPY app ./app
 
-RUN mvn -B -ntp -Dmaven.test.skip=true package
+# -pl app -am собирает приложение вместе с зависимым модулем proto
+# (контракты и кодоген gRPC); тесты пропускаются — им нужен Docker-демон.
+RUN mvn -B -ntp -pl app -am -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
-COPY --from=build /build/target/chat.jar app.jar
+COPY --from=build /build/app/target/chat.jar app.jar
 
 EXPOSE 8080
 

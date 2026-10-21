@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package common;
+
+option java_multiple_files = true;
+option java_package = "ru.archlabs.proto.common";
+
+import "google/protobuf/timestamp.proto";
+
+// Пользовательское сообщение чата. Время — protobuf Timestamp: колонки базы
+// хранят TIMESTAMP WITH TIME ZONE с микросекундной точностью, протокол даёт
+// наносекунды, поэтому потерь при конвертации нет.
+message Message {
+  int64 id = 1;
+  string sender = 2;
+  string text = 3;
+  google.protobuf.Timestamp sent_at = 4;
+}
+
+// Состояние пользователя: онлайн ли он и включены ли у него оповещения.
+message UserState {
+  string name = 1;
+  bool online = 2;
+  google.protobuf.Timestamp last_connected = 3;
+  bool notifications_enabled = 4;
+}
+
+// Пустой ответ для RPC без результата.
+message Empty {}
