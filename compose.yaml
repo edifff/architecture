@@ -1,12 +1,13 @@
 name: arch-labs
 
 # Слоистая архитектура:
-#   api     — входной элемент (Facade) — библиотека, отдельного контейнера нет;
+#   api     — входной элемент: Netty HTTP/SSE + Facade (gRPC-клиент к chat);
 #   chat    — доменный слой (gRPC);
 #   storage — слой хранения (gRPC + JDBC);
 #   db      — PostgreSQL.
 #
 # docker compose up --build
+# docker compose --profile test run --rm tests
 
 services:
   db:
@@ -95,6 +96,25 @@ services:
       - ./perf/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
+
+  tests:
+    image: maven:3.9-eclipse-temurin-25
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-1001}"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.m2:/maven-cache
+    environment:
+      HOME: /workspace
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: mvn -B -ntp -Dmaven.repo.local=/maven-cache test
+    profiles: ["test"]
 
 volumes:
   chat-db-data:

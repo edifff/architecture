@@ -75,9 +75,24 @@ var message = facades.messages().send("ivan", "{\"text\":\"hello\"}");
 | `chat-service` | `ChatGrpcServiceTest` | gRPC-контракт домена поверх in-memory хранилища + поток `Subscribe` |
 | `api` | `FacadesTest`, `ChatHttpServerTest` | фасады (разбор/проверка/protobuf) и Netty HTTP/SSE поверх in-process gRPC |
 
+Все тесты запускаются одинаково — и на хосте, и в контейнере:
+
 ```shell
-mvn test        # весь реактор; Testcontainers требует Docker
+# на хосте (Testcontainers использует локальный Docker-демон)
+mvn test
+
+# в Docker: сервис tests под профилем test
+docker compose --profile test run --rm tests
+
+# если группа docker-сокета не 1001
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) \
+  docker compose --profile test run --rm tests
 ```
+
+Сервису `tests` проброшены исходники, `/var/run/docker.sock` и Maven-кэш хоста
+(`~/.m2`); Testcontainers поднимает PostgreSQL через демон хоста
+(`TESTCONTAINERS_HOST_OVERRIDE`). При сборке образов (`docker build`) тесты
+пропускаются: внутри `docker build` Docker-демон для Testcontainers недоступен.
 
 ## Запуск
 
