@@ -6,10 +6,10 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 
 final class ChatChannelInitializer extends ChannelInitializer<SocketChannel> {
-    private final ChatHttpServer server;
+    private final ChatRequestRouter router;
 
-    ChatChannelInitializer(ChatHttpServer server) {
-        this.server = server;
+    ChatChannelInitializer(ChatRequestRouter router) {
+        this.router = router;
     }
 
     @Override
@@ -18,6 +18,6 @@ final class ChatChannelInitializer extends ChannelInitializer<SocketChannel> {
                 .addLast(
                         new HttpServerCodec(),
                         new HttpObjectAggregator(1 << 20),
-                        new ChatServerHandler(server));
+                        new ChatServerHandler(router));
     }
 }

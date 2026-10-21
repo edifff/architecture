@@ -40,20 +40,29 @@ HTTP + JSON + SSE. Входной элемент — Facade — разбирае
 
 ## Входной элемент (Facade)
 
-`api/src/main/java/ru/archlabs/chat/api/ChatFacade.java` занимается **только
-пользовательским сообщением**:
+Входной элемент разделён по категориям сообщений — несколько маленьких фасадов в
+`api/src/main/java/ru/archlabs/chat/api/`:
 
-1. **разбор** тела сообщения (`{"text": ...}`, `{"enabled": ...}`) через `ChatJson`;
-2. **проверка** (непустые имя/текст, корректный JSON);
-3. **конвертация** в protobuf-запросы `chat.ChatService` и вызов по gRPC.
+| Фасад | Что делает |
+|---|---|
+| `SessionFacade` | connect / disconnect |
+| `MessageFacade` | разбор `{"text": ...}`, проверка, отправка; история |
+| `NotificationFacade` | разбор `{"enabled": ...}`, настройки, подписка на поток |
+| `UserFacade` | состояние пользователя |
 
-HTTP-маршрутизация, коды ответов, SSE и жизненный цикл соединений — это транспорт
-(`ChatServerHandler` на Netty). Facade о них не знает.
+Каждый фасад разбирает тело сообщения (`ChatJson`), проверяет его и конвертирует в
+protobuf-запросы `chat.ChatService`, после чего вызывает gRPC. `ChatFacades`
+собирает их вместе.
+
+HTTP-маршрутизация, коды ответов, SSE и жизненный цикл соединений — это транспорт.
+Он тоже разделён по категориям: `SessionsHandler`, `UsersHandler`,
+`MessagesHandler`, `NotificationsHandler`, `EventsHandler`; `ChatRequestRouter`
+выбирает нужный handler по методу и секции (без `switch`).
 
 Пример:
 
 ```java
-var message = facade.send("ivan", "{\"text\":\"hello\"}");
+var message = facades.messages().send("ivan", "{\"text\":\"hello\"}");
 ```
 
 ## Тесты по слоям (отдельно)
@@ -64,7 +73,7 @@ var message = facade.send("ivan", "{\"text\":\"hello\"}");
 | `core` | `InMemoryChatServerTest`, `ChatMetricsTest` | доменная логика без транспорта и БД |
 | `storage-service` | `PostgresStorageTest`, `StorageGrpcServiceTest` | JDBC-хранилище и gRPC-контракт против реального PostgreSQL (Testcontainers) |
 | `chat-service` | `ChatGrpcServiceTest` | gRPC-контракт домена поверх in-memory хранилища + поток `Subscribe` |
-| `api` | `ChatFacadeTest`, `ChatHttpServerTest` | разбор запроса, проверка, конвертация в protobuf; Netty HTTP поверх in-process gRPC |
+| `api` | `FacadesTest`, `ChatHttpServerTest` | фасады (разбор/проверка/protobuf) и Netty HTTP/SSE поверх in-process gRPC |
 
 ```shell
 mvn test        # весь реактор; Testcontainers требует Docker

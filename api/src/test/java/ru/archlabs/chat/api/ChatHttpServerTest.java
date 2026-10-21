@@ -39,7 +39,7 @@ final class ChatHttpServerTest {
                         .build()
                         .start();
         channel = InProcessChannelBuilder.forName(name).directExecutor().build();
-        httpServer = new ChatHttpServer(new ChatFacade(channel), 0);
+        httpServer = new ChatHttpServer(ChatFacades.over(channel), 0);
         httpServer.start();
         base = httpServer.baseUri();
         client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();

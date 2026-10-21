@@ -2,7 +2,7 @@ package ru.archlabs.chat;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import ru.archlabs.chat.api.ChatFacade;
+import ru.archlabs.chat.api.ChatFacades;
 import ru.archlabs.chat.http.ChatHttpServer;
 
 import java.util.concurrent.CountDownLatch;
@@ -18,8 +18,7 @@ public final class ChatApplication {
 
         ManagedChannel channel =
                 ManagedChannelBuilder.forAddress(chatHost, chatPort).usePlaintext().build();
-        var facade = new ChatFacade(channel);
-        var server = new ChatHttpServer(facade, httpPort);
+        var server = new ChatHttpServer(ChatFacades.over(channel), httpPort);
         Runtime.getRuntime()
                 .addShutdownHook(
                         new Thread(
