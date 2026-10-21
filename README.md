@@ -40,23 +40,20 @@ HTTP + JSON + SSE. Входной элемент — Facade — разбирае
 
 ## Входной элемент (Facade)
 
-`api/src/main/java/ru/archlabs/chat/api/ChatFacade.java` — единственный входной
-элемент. Netty только принимает байты и отдаёт ответ; вся работа с пользовательским
-сообщением — в Facade:
+`api/src/main/java/ru/archlabs/chat/api/ChatFacade.java` занимается **только
+пользовательским сообщением**:
 
-1. **разбор** `FacadeRequest(method, path, body)`: маршрут `/{section}/{username}`
-   и JSON-тела (`SendMessageRequest`, `NotificationsRequest`);
-2. **проверка**: непустые имя/текст, корректный JSON, допустимый метод;
-3. **конвертация** в protobuf-запросы `chat.ChatService` и вызов по gRPC;
-4. **ответ**: `FacadeResponse` (HTTP-статус, тело, действие `OPEN`/`CLOSE`/`STREAM`),
-   который Netty просто записывает в канал.
+1. **разбор** тела сообщения (`{"text": ...}`, `{"enabled": ...}`) через `ChatJson`;
+2. **проверка** (непустые имя/текст, корректный JSON);
+3. **конвертация** в protobuf-запросы `chat.ChatService` и вызов по gRPC.
+
+HTTP-маршрутизация, коды ответов, SSE и жизненный цикл соединений — это транспорт
+(`ChatServerHandler` на Netty). Facade о них не знает.
 
 Пример:
 
 ```java
-var response = facade.handle(
-        new FacadeRequest("POST", "/messages/ivan", "{\"text\":\"hello\"}"));
-// response.status() == 201, response.body() == {"id":...,"text":"hello",...}
+var message = facade.send("ivan", "{\"text\":\"hello\"}");
 ```
 
 ## Тесты по слоям (отдельно)
