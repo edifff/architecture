@@ -97,3 +97,70 @@ new buffered notification. Metrics are exposed on port 9101.
 - Restart tests cover a normal shutdown and a simulated abnormal shutdown.
 - The H2 concurrency test is reduced to four senders and ten messages each to keep
   disk-backed test time reasonable; the RAM contract keeps the larger 8 × 40 case.
+
+## Lab 3: Netty IP interface
+
+`api` is the input layer. It exposes a Netty HTTP server and converts JSON into calls on
+`ChatGateway`. Live notifications are delivered as Server-Sent Events, so a client can
+keep one HTTP connection open for the event stream.
+
+### Protocol
+
+| Method | Path | Body | Result |
+| --- | --- | --- | --- |
+| `POST` | `/sessions/{user}` | empty | `201` + user state |
+| `DELETE` | `/sessions/{user}` | empty | `204` |
+| `GET` | `/users/{user}` | — | `200` + user state |
+| `POST` | `/messages/{user}` | `{"text":"..."}` | `201` + message |
+| `GET` | `/messages/{user}?limit=50` | — | `200` + message array |
+| `PUT` | `/notifications/{user}` | `{"enabled":true}` | `204` |
+| `GET` | `/events/{user}` | — | `200` + `text/event-stream` |
+
+The event stream sends:
+
+```text
+event: message
+data: {"id":1,"sender":"bob","text":"hello","createdAt":"..."}
+```
+
+Errors use `{"error":"..."}` and map validation to `400`, duplicate/closed sessions to
+`409`, unknown users to `404`, and unexpected failures to `500`.
+
+### Input element split by category
+
+| Category | Facade | Netty handler |
+| --- | --- | --- |
+| Sessions | `SessionFacade` | `SessionsHandler` |
+| Messages | `MessageFacade` | `MessagesHandler` |
+| Notifications | `NotificationFacade` | `NotificationsHandler` |
+| Users | `UserFacade` | `UsersHandler` |
+| Event stream | `NotificationFacade` | `EventsHandler` |
+
+`ChatFacades` groups the four facades. `ChatRequestRouter` chooses a route by method and
+path, and `ResponseWriter` owns HTTP serialization. The HTTP layer depends on
+`ChatGateway`, not on Netty internals or storage.
+
+### Run lab 3
+
+```shell
+mvn -q package -DskipTests
+ARCHLABS_STORAGE=memory ARCHLABS_HTTP_PORT=8080 java -jar app/target/app.jar
+```
+
+Use `ARCHLABS_STORAGE=h2` (the default) for persistence. The metrics endpoint is
+`http://localhost:9100/metrics`.
+
+```shell
+curl -X POST http://localhost:8080/sessions/alice
+curl -X POST http://localhost:8080/sessions/bob
+curl -X POST http://localhost:8080/messages/bob \
+  -H 'Content-Type: application/json' -d '{"text":"hello"}'
+curl -N http://localhost:8080/events/alice
+```
+
+### Lab 3 tests
+
+- `FacadesTest` checks parsing, validation, limits, and delegation without Netty.
+- `ChatHttpServerTest` runs the real Netty server over the in-process domain and covers
+  status codes, JSON bodies, history, notification preferences, disconnect, routing, and
+  the SSE event stream.

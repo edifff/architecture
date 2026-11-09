@@ -15,6 +15,8 @@
     <modules>
         <module>core</module>
         <module>storage-service</module>
+        <module>api</module>
+        <module>app</module>
     </modules>
 
     <properties>
@@ -23,6 +25,8 @@
         <junit.version>5.11.0</junit.version>
         <prometheus.version>0.16.0</prometheus.version>
         <h2.version>2.3.232</h2.version>
+        <netty.version>4.1.105.Final</netty.version>
+        <jackson.version>2.18.11</jackson.version>
     </properties>
 
     <dependencyManagement>
