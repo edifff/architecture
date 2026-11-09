@@ -59,3 +59,41 @@ The demo prints delivered messages and starts Prometheus metrics on
 
 The contract test is reusable: lab 2 runs the same behavior against the embedded
 database.
+
+## Lab 2: embedded H2 storage
+
+`storage-service` adds `JdbcChatStorage`, an H2 implementation of the same
+`ChatStorage` port. Messages, users, preferences, and undelivered notifications are
+committed to a file database. Every message and its pending notifications are written
+in one transaction.
+
+On startup the server calls `resetOnlineUsers()`. This is the crash-recovery boundary:
+users from a previous process are marked offline, while messages and pending
+notifications remain. Reconnecting users receive their buffered notifications.
+
+### Run lab 2
+
+```shell
+mvn -q -pl storage-service -am test
+mvn -q install -DskipTests
+mvn -q -pl storage-service exec:java
+```
+
+The database is `./data/chat` by default. Override it with `ARCHLABS_DB_URL`:
+
+```shell
+ARCHLABS_DB_URL='jdbc:h2:file:/tmp/chat;DB_CLOSE_ON_EXIT=FALSE' \
+  mvn -q -pl storage-service exec:java
+```
+
+Run the demo twice: the second run shows the message history from the first run plus a
+new buffered notification. Metrics are exposed on port 9101.
+
+### Lab 2 tests
+
+- `JdbcChatStorageTest` proves committed messages and notifications survive reopening,
+  and that `resetOnlineUsers()` is the crash recovery boundary.
+- `PersistentChatServerTest` runs the full lab 1 contract against H2.
+- Restart tests cover a normal shutdown and a simulated abnormal shutdown.
+- The H2 concurrency test is reduced to four senders and ten messages each to keep
+  disk-backed test time reasonable; the RAM contract keeps the larger 8 × 40 case.

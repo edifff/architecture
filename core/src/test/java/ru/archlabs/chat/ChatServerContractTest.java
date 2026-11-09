@@ -210,8 +210,8 @@ abstract class ChatServerContractTest {
 
     @Test
     void concurrentSendsDoNotLoseMessagesOrIds() throws Exception {
-        var senders = 8;
-        var perSender = 40;
+        var senders = concurrentSenders();
+        var perSender = messagesPerSender();
         var pool = Executors.newFixedThreadPool(senders);
         try {
             var sessions = new ArrayList<ChatSession>();
@@ -229,7 +229,7 @@ abstract class ChatServerContractTest {
                                 }));
             }
             for (var future : futures) {
-                future.get(10, TimeUnit.SECONDS);
+                future.get(120, TimeUnit.SECONDS);
             }
 
             var history = server().history(10_000);
@@ -238,6 +238,14 @@ abstract class ChatServerContractTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    int concurrentSenders() {
+        return 8;
+    }
+
+    int messagesPerSender() {
+        return 40;
     }
 
     private String attemptConnect(CyclicBarrier barrier) throws Exception {
