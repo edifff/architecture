@@ -167,47 +167,110 @@ curl -N http://localhost:8080/events/alice
 
 ## Lab 4: Docker containers
 
-The app is packaged with a multi-stage `Dockerfile`: Maven builds the shaded jar, then
-the runtime image uses Temurin JRE, runs as non-root UID 10001, and checks
-`/metrics` with a Docker healthcheck. The H2 data directory is a named volume, so a
-container restart keeps messages and pending notifications.
+The multi-stage `Dockerfile` builds any Maven module selected by the `MODULE` build
+argument. The runtime image uses Temurin JRE, runs as non-root UID 10001, installs a
+`/metrics` healthcheck, and keeps H2 data in a named volume. Every module jar is shaded
+with its own main class.
 
-`compose.yaml` runs:
-
-- `app` on ports `8080` (HTTP/SSE) and `9100` (Prometheus metrics), with
-  `chat-data:/data`;
-- `prometheus` on port `9090`, scraping `app:9100`;
-- `tests` under the `test` profile, a separate Maven container that runs the full test
-  suite against the same source tree.
-
-### Run lab 4
+The monolith from labs 1–3 is still available under the `monolith` profile:
 
 ```shell
-docker compose up -d --build
-docker compose ps
-curl -X POST http://localhost:8080/sessions/alice
-curl -N http://localhost:8080/events/alice
+docker compose --profile monolith up -d --build app
 ```
 
-Prometheus is at `http://localhost:9090`.
+That container listens on `8081` (HTTP/SSE) and `9110` (metrics) to avoid the layered
+stack's ports. The H2 volume is `app-data`.
 
-Run tests from the host and from a separate container:
+### Run lab 4 tests from the host and from a container
 
 ```shell
 mvn test
 docker compose --profile test run --rm tests
 ```
 
-The Docker test command was verified to complete with all 55 tests passing. The app
-container was also restarted, and its history was still available afterward.
+The separate test container runs the full reactor with no Docker-in-Docker dependency
+because the storage tests use embedded H2. The Docker test run was verified to pass all
+66 tests.
 
 ### Persistence check
 
 ```shell
+curl -X POST http://localhost:8081/sessions/bob
+curl -X POST http://localhost:8081/messages/bob \
+  -H 'Content-Type: application/json' -d '{"text":"before restart"}'
+docker compose --profile monolith restart app
+curl -X POST http://localhost:8081/sessions/alice
+curl 'http://localhost:8081/messages/alice?limit=10'
+```
+
+## Lab 5: layered containers and protobuf
+
+The final system is split into three containers with explicit contracts:
+
+```text
+api (Netty HTTP/SSE + Facades) --gRPC chat.proto--> chat (domain)
+chat (domain) --gRPC storage.proto--> storage (JDBC/H2) --JDBC--> H2 file
+```
+
+| Layer | Module / container | Responsibility | Contract |
+| --- | --- | --- | --- |
+| Input | `api` / `api` | Netty HTTP/SSE, Facade parsing, validation, protobuf conversion | `chat.proto` |
+| Domain | `chat-service` / `chat` | sessions, delivery, notification fan-out | `chat.proto`, `storage.proto` |
+| Storage | `storage-service` / `storage` | JDBC/H2, transactions, crash recovery | `storage.proto` |
+| Contracts | `proto` | protobuf schemas and gRPC codegen | — |
+| Core | `core` | domain records, policies, in-memory adapter, metrics | — |
+
+### Contracts
+
+- `proto/common.proto` — `ChatMessage`, `UserState`, `ChatNotification`, `Empty`.
+- `proto/chat.proto` — `ChatService` with `Connect`, `Disconnect`, `Send`, `History`,
+  `SetNotifications`, `GetUser`, and server-streaming `Subscribe`.
+- `proto/storage.proto` — `StorageService` with presence, message, history, outbox, and
+  acknowledgement operations.
+
+`ChatGrpcService` maps domain failures to gRPC statuses. `GrpcChatStorage` maps them
+back to domain exceptions for the chat layer. `GrpcChatGateway` does the same for the
+api layer, so HTTP status mapping stays independent of protobuf details.
+
+### Input element
+
+The input element is still the `ChatFacades` group: one facade for sessions, messages,
+notifications, and users. A facade parses JSON, validates it, and converts it into the
+internal command represented by `ChatGateway`. In the layered deployment
+`GrpcChatGateway` converts that internal call into a protobuf request.
+
+### Run lab 5
+
+```shell
+docker compose up -d --build
+docker compose ps
+curl -X POST http://localhost:8080/sessions/alice
 curl -X POST http://localhost:8080/sessions/bob
 curl -X POST http://localhost:8080/messages/bob \
-  -H 'Content-Type: application/json' -d '{"text":"before restart"}'
-docker compose restart app
-curl -X POST http://localhost:8080/sessions/alice
-curl 'http://localhost:8080/messages/alice?limit=10'
+  -H 'Content-Type: application/json' -d '{"text":"through three layers"}'
+curl -N http://localhost:8080/events/alice
+```
+
+Services: api `8080`, chat gRPC `9091`, storage gRPC `9092`, Prometheus `9090`.
+Metrics: api `9100`, chat `9101`, storage `9102`.
+
+### Tests per layer
+
+| Layer | Test | What it proves |
+| --- | --- | --- |
+| Contracts | `ProtoRoundTripTest` | messages round-trip; service descriptors exist |
+| Core | `InMemoryChatServerTest`, `ChatMetricsTest` | domain behavior, concurrency, metrics |
+| Storage | `JdbcChatStorageTest`, `PersistentChatServerTest` | H2, restart, crash recovery |
+| Storage gRPC | `StorageGrpcServiceTest` | storage contract over gRPC |
+| Chat gRPC | `ChatGrpcServiceTest` | domain contract and live stream over gRPC |
+| API | `FacadesTest`, `ChatHttpServerTest`, `GrpcChatGatewayTest` | input parsing, Netty HTTP/SSE, gRPC gateway |
+
+### Performance
+
+The load client and measured scaling data are in `perf/README.md`.
+
+```shell
+perf/load.sh 1 20
+perf/load.sh 10 20
+perf/load.sh 50 20
 ```

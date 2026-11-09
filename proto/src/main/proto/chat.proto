@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package archlabs.chat;
+
+option java_package = "ru.archlabs.proto.chat";
+option java_multiple_files = true;
+option java_outer_classname = "ChatProto";
+
+import "common.proto";
+
+service ChatService {
+  rpc Connect(ConnectRequest) returns (archlabs.common.UserState);
+  rpc Disconnect(UserRequest) returns (archlabs.common.Empty);
+  rpc Send(SendMessageRequest) returns (archlabs.common.ChatMessage);
+  rpc History(HistoryRequest) returns (HistoryResponse);
+  rpc SetNotifications(SetNotificationsRequest) returns (archlabs.common.Empty);
+  rpc GetUser(UserRequest) returns (archlabs.common.UserState);
+  rpc Subscribe(UserRequest) returns (stream archlabs.common.ChatMessage);
+}
+
+message ConnectRequest {
+  string name = 1;
+}
+
+message UserRequest {
+  string name = 1;
+}
+
+message SendMessageRequest {
+  string name = 1;
+  string text = 2;
+}
+
+message HistoryRequest {
+  string name = 1;
+  int32 limit = 2;
+}
+
+message HistoryResponse {
+  repeated archlabs.common.ChatMessage messages = 1;
+}
+
+message SetNotificationsRequest {
+  string name = 1;
+  bool enabled = 2;
+}

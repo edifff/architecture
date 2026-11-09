@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package archlabs.common;
+
+option java_package = "ru.archlabs.proto.common";
+option java_multiple_files = true;
+option java_outer_classname = "CommonProto";
+
+message Empty {
+}
+
+message ChatMessage {
+  int64 id = 1;
+  string sender = 2;
+  string text = 3;
+  int64 created_at_epoch_millis = 4;
+}
+
+message UserState {
+  string name = 1;
+  bool online = 2;
+  bool notifications_enabled = 3;
+  int64 last_seen_epoch_millis = 4;
+}
+
+message ChatNotification {
+  int64 id = 1;
+  string recipient = 2;
+  ChatMessage message = 3;
+  int64 created_at_epoch_millis = 4;
+}

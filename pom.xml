@@ -13,8 +13,10 @@
     <description>Chat labs: in-memory, embedded storage, Netty IP interface, Docker, layered gRPC</description>
 
     <modules>
+        <module>proto</module>
         <module>core</module>
         <module>storage-service</module>
+        <module>chat-service</module>
         <module>api</module>
         <module>app</module>
     </modules>
@@ -27,6 +29,10 @@
         <h2.version>2.3.232</h2.version>
         <netty.version>4.1.105.Final</netty.version>
         <jackson.version>2.18.11</jackson.version>
+        <grpc.version>1.85.1</grpc.version>
+        <protobuf.version>4.36.2</protobuf.version>
+        <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
     </properties>
 
     <dependencyManagement>

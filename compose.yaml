@@ -1,17 +1,60 @@
 services:
-  app:
+  storage:
     build:
       context: .
-    image: arch-labs-chat:dev
+      args:
+        MODULE: storage-service
+    image: arch-labs-storage:dev
     environment:
       ARCHLABS_DB_URL: "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+      STORAGE_PORT: "9092"
+      STORAGE_METRICS_PORT: "9102"
+      HEALTH_PORT: "9102"
+    ports:
+      - "9092:9092"
+      - "9102:9102"
+    volumes:
+      - chat-data:/data
+    restart: unless-stopped
+
+  chat:
+    build:
+      context: .
+      args:
+        MODULE: chat-service
+    image: arch-labs-chat-service:dev
+    environment:
+      STORAGE_HOST: storage
+      STORAGE_PORT: "9092"
+      CHAT_PORT: "9091"
+      CHAT_METRICS_PORT: "9101"
+      HEALTH_PORT: "9101"
+    ports:
+      - "9091:9091"
+      - "9101:9101"
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      args:
+        MODULE: api
+    image: arch-labs-api:dev
+    environment:
+      CHAT_HOST: chat
+      CHAT_PORT: "9091"
       ARCHLABS_HTTP_PORT: "8080"
       ARCHLABS_METRICS_PORT: "9100"
+      HEALTH_PORT: "9100"
     ports:
       - "8080:8080"
       - "9100:9100"
-    volumes:
-      - chat-data:/data
+    depends_on:
+      chat:
+        condition: service_healthy
     restart: unless-stopped
 
   prometheus:
@@ -25,19 +68,42 @@ services:
       - ./perf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     depends_on:
-      - app
+      api:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+
+  app:
+    profiles:
+      - monolith
+    build:
+      context: .
+      args:
+        MODULE: app
+    image: arch-labs-chat:dev
+    environment:
+      ARCHLABS_DB_URL: "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+      ARCHLABS_HTTP_PORT: "8080"
+      ARCHLABS_METRICS_PORT: "9100"
+      HEALTH_PORT: "9100"
+    ports:
+      - "8081:8080"
+      - "9110:9100"
+    volumes:
+      - app-data:/data
+    restart: unless-stopped
 
   tests:
-    image: maven:3.9.9-eclipse-temurin-21
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-      - maven-cache:/root/.m2
-    command: mvn -B test
+    build:
+      context: .
+      target: test
+    image: arch-labs-tests:dev
     profiles:
       - test
 
 volumes:
   chat-data:
+  app-data:
   prometheus-data:
-  maven-cache:

@@ -4,7 +4,10 @@ package ru.archlabs.chat.domain;
  * Base class for expected chat failures.
  */
 public sealed class ChatException extends RuntimeException
-        permits ChatValidationException, ChatConflictException, ChatNotFoundException {
+        permits ChatValidationException,
+                ChatConflictException,
+                ChatNotFoundException,
+                ChatInternalException {
 
     protected ChatException(String message) {
         super(message);
