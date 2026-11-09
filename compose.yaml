@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+    image: arch-labs-chat:dev
+    environment:
+      ARCHLABS_DB_URL: "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+      ARCHLABS_HTTP_PORT: "8080"
+      ARCHLABS_METRICS_PORT: "9100"
+    ports:
+      - "8080:8080"
+      - "9100:9100"
+    volumes:
+      - chat-data:/data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./perf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - app
+
+  tests:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - maven-cache:/root/.m2
+    command: mvn -B test
+    profiles:
+      - test
+
+volumes:
+  chat-data:
+  prometheus-data:
+  maven-cache:

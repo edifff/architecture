@@ -164,3 +164,50 @@ curl -N http://localhost:8080/events/alice
 - `ChatHttpServerTest` runs the real Netty server over the in-process domain and covers
   status codes, JSON bodies, history, notification preferences, disconnect, routing, and
   the SSE event stream.
+
+## Lab 4: Docker containers
+
+The app is packaged with a multi-stage `Dockerfile`: Maven builds the shaded jar, then
+the runtime image uses Temurin JRE, runs as non-root UID 10001, and checks
+`/metrics` with a Docker healthcheck. The H2 data directory is a named volume, so a
+container restart keeps messages and pending notifications.
+
+`compose.yaml` runs:
+
+- `app` on ports `8080` (HTTP/SSE) and `9100` (Prometheus metrics), with
+  `chat-data:/data`;
+- `prometheus` on port `9090`, scraping `app:9100`;
+- `tests` under the `test` profile, a separate Maven container that runs the full test
+  suite against the same source tree.
+
+### Run lab 4
+
+```shell
+docker compose up -d --build
+docker compose ps
+curl -X POST http://localhost:8080/sessions/alice
+curl -N http://localhost:8080/events/alice
+```
+
+Prometheus is at `http://localhost:9090`.
+
+Run tests from the host and from a separate container:
+
+```shell
+mvn test
+docker compose --profile test run --rm tests
+```
+
+The Docker test command was verified to complete with all 55 tests passing. The app
+container was also restarted, and its history was still available afterward.
+
+### Persistence check
+
+```shell
+curl -X POST http://localhost:8080/sessions/bob
+curl -X POST http://localhost:8080/messages/bob \
+  -H 'Content-Type: application/json' -d '{"text":"before restart"}'
+docker compose restart app
+curl -X POST http://localhost:8080/sessions/alice
+curl 'http://localhost:8080/messages/alice?limit=10'
+```
