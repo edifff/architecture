@@ -1,22 +1,24 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.ChatServer;
-import ru.archlabs.chat.ChatSession;
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotFoundException;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.metrics.ChatMetrics;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+import ru.archlabs.chat.ChatServer;
+import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
+
 /**
  * Lab 3 gateway: calls the in-process domain directly.
  */
 public final class CoreChatGateway implements ChatGateway {
+    private static final String NOT_CONNECTED = "User is not connected: ";
+
     private final ChatServer server;
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
 
@@ -25,28 +27,28 @@ public final class CoreChatGateway implements ChatGateway {
     }
 
     @Override
-    public UserState connect(String user) {
-        var session = server.connect(user);
+    public ChatUser connect(String user) {
+        ChatSession session = server.connect(user);
         sessions.put(session.userName(), session);
         return server.user(session.userName());
     }
 
     @Override
     public void disconnect(String user) {
-        var session = sessions.remove(user);
+        ChatSession session = sessions.remove(user);
         if (session == null) {
-            throw new ChatNotFoundException("User is not connected: " + user);
+            throw new ChatNotFoundException(NOT_CONNECTED + user);
         }
         session.close();
     }
 
     @Override
-    public ChatMessage send(String user, String text) {
+    public Message send(String user, String text) {
         return session(user).send(text);
     }
 
     @Override
-    public List<ChatMessage> history(String user, int limit) {
+    public List<Message> history(String user, int limit) {
         return session(user).history(limit);
     }
 
@@ -56,12 +58,12 @@ public final class CoreChatGateway implements ChatGateway {
     }
 
     @Override
-    public UserState user(String user) {
+    public ChatUser user(String user) {
         return server.user(user);
     }
 
     @Override
-    public AutoCloseable subscribe(String user, Consumer<ChatMessage> listener) {
+    public AutoCloseable subscribe(String user, Consumer<Message> listener) {
         return session(user).addListener(listener);
     }
 
@@ -78,9 +80,9 @@ public final class CoreChatGateway implements ChatGateway {
     }
 
     private ChatSession session(String user) {
-        var session = sessions.get(user);
+        ChatSession session = sessions.get(user);
         if (session == null) {
-            throw new ChatNotFoundException("User is not connected: " + user);
+            throw new ChatNotFoundException(NOT_CONNECTED + user);
         }
         return session;
     }

@@ -1,17 +1,20 @@
 package ru.archlabs.chat.chat;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotification;
-import ru.archlabs.chat.domain.UserState;
-
 import java.time.Instant;
+
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
+import ru.archlabs.proto.common.ChatMessage;
+import ru.archlabs.proto.common.ChatNotification;
+import ru.archlabs.proto.common.UserState;
 
 final class ChatProtoMapper {
     private ChatProtoMapper() {
     }
 
-    static ru.archlabs.proto.common.UserState toProto(UserState user) {
-        return ru.archlabs.proto.common.UserState.newBuilder()
+    static UserState toProto(ChatUser user) {
+        return UserState.newBuilder()
                 .setName(user.name())
                 .setOnline(user.online())
                 .setNotificationsEnabled(user.notificationsEnabled())
@@ -19,16 +22,16 @@ final class ChatProtoMapper {
                 .build();
     }
 
-    static UserState fromProto(ru.archlabs.proto.common.UserState user) {
-        return new UserState(
+    static ChatUser fromProto(UserState user) {
+        return new ChatUser(
                 user.getName(),
                 user.getOnline(),
                 user.getNotificationsEnabled(),
                 Instant.ofEpochMilli(user.getLastSeenEpochMillis()));
     }
 
-    static ru.archlabs.proto.common.ChatMessage toProto(ChatMessage message) {
-        return ru.archlabs.proto.common.ChatMessage.newBuilder()
+    static ChatMessage toProto(Message message) {
+        return ChatMessage.newBuilder()
                 .setId(message.id())
                 .setSender(message.sender())
                 .setText(message.text())
@@ -36,16 +39,16 @@ final class ChatProtoMapper {
                 .build();
     }
 
-    static ChatMessage fromProto(ru.archlabs.proto.common.ChatMessage message) {
-        return new ChatMessage(
+    static Message fromProto(ChatMessage message) {
+        return new Message(
                 message.getId(),
                 message.getSender(),
                 message.getText(),
                 Instant.ofEpochMilli(message.getCreatedAtEpochMillis()));
     }
 
-    static ru.archlabs.proto.common.ChatNotification toProto(ChatNotification notification) {
-        return ru.archlabs.proto.common.ChatNotification.newBuilder()
+    static ChatNotification toProto(Notification notification) {
+        return ChatNotification.newBuilder()
                 .setId(notification.id())
                 .setRecipient(notification.recipient())
                 .setMessage(toProto(notification.message()))
@@ -53,8 +56,8 @@ final class ChatProtoMapper {
                 .build();
     }
 
-    static ChatNotification fromProto(ru.archlabs.proto.common.ChatNotification notification) {
-        return new ChatNotification(
+    static Notification fromProto(ChatNotification notification) {
+        return new Notification(
                 notification.getId(),
                 notification.getRecipient(),
                 fromProto(notification.getMessage()),

@@ -1,7 +1,10 @@
 package ru.archlabs.chat.chat;
 
+import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Server;
 import io.grpc.ServerBuilder;
+
 import ru.archlabs.chat.metrics.MetricsHttpServer;
 import ru.archlabs.chat.service.ChatServerImpl;
 
@@ -13,21 +16,21 @@ public final class ChatMain {
     }
 
     public static void main(String[] args) throws Exception {
-        var port = intEnv("CHAT_PORT", 9091);
-        var metricsPort = intEnv("CHAT_METRICS_PORT", 9101);
-        var storageHost = System.getenv().getOrDefault("STORAGE_HOST", "localhost");
-        var storagePort = intEnv("STORAGE_PORT", 9092);
+        int port = intEnv("CHAT_PORT", 9091);
+        int metricsPort = intEnv("CHAT_METRICS_PORT", 9101);
+        String storageHost = System.getenv().getOrDefault("STORAGE_HOST", "localhost");
+        int storagePort = intEnv("STORAGE_PORT", 9092);
 
-        var channel =
+        ManagedChannel channel =
                 ManagedChannelBuilder.forAddress(storageHost, storagePort).usePlaintext().build();
-        var storage = new GrpcChatStorage(channel);
-        var server = new ChatServerImpl(storage);
-        var grpc =
+        GrpcChatStorage storage = new GrpcChatStorage(channel);
+        ChatServerImpl server = new ChatServerImpl(storage);
+        Server grpc =
                 ServerBuilder.forPort(port)
                         .addService(new ChatGrpcService(server))
                         .build()
                         .start();
-        var metricsServer = new MetricsHttpServer(server.metrics(), metricsPort);
+        MetricsHttpServer metricsServer = new MetricsHttpServer(server.metrics(), metricsPort);
         metricsServer.start();
         Runtime.getRuntime()
                 .addShutdownHook(
@@ -46,7 +49,7 @@ public final class ChatMain {
     }
 
     private static int intEnv(String name, int fallback) {
-        var value = System.getenv(name);
+        String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : Integer.parseInt(value);
     }
 }

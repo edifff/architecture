@@ -1,14 +1,7 @@
 package ru.archlabs.chat.api;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.http.ChatHttpServer;
-import ru.archlabs.chat.service.ChatServerImpl;
-
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,10 +11,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.http.ChatHttpServer;
+import ru.archlabs.chat.service.ChatServerImpl;
+
 
 final class ChatHttpServerTest {
     private CoreChatGateway gateway;
@@ -46,104 +45,104 @@ final class ChatHttpServerTest {
 
     @Test
     void connectReturnsCreatedAndExposesUserState() throws Exception {
-        assertEquals(201, post("/sessions/alice", "").statusCode());
+        Assertions.assertEquals(201, post("/sessions/alice", "").statusCode());
 
-        var response = get("/users/alice");
-        assertEquals(200, response.statusCode());
-        var user = ChatJson.read(response.body(), UserState.class);
-        assertEquals("alice", user.name());
-        assertTrue(user.online());
+        HttpResponse<String> response = get("/users/alice");
+        Assertions.assertEquals(200, response.statusCode());
+        ChatUser user = ChatJson.read(response.body(), ChatUser.class);
+        Assertions.assertEquals("alice", user.name());
+        Assertions.assertTrue(user.online());
     }
 
     @Test
     void duplicateConnectionReturnsConflict() throws Exception {
-        assertEquals(201, post("/sessions/alice", "").statusCode());
+        Assertions.assertEquals(201, post("/sessions/alice", "").statusCode());
 
-        var duplicate = post("/sessions/alice", "");
+        HttpResponse<String> duplicate = post("/sessions/alice", "");
 
-        assertEquals(409, duplicate.statusCode());
-        assertEquals("User is already connected: alice", error(duplicate));
+        Assertions.assertEquals(409, duplicate.statusCode());
+        Assertions.assertEquals("User is already connected: alice", error(duplicate));
     }
 
     @Test
     void sendReturnsCreatedMessageAndHistory() throws Exception {
         post("/sessions/alice", "");
 
-        var response = post("/messages/alice", "{\"text\":\"hello\"}");
+        HttpResponse<String> response = post("/messages/alice", "{\"text\":\"hello\"}");
 
-        assertEquals(201, response.statusCode());
-        var message = ChatJson.read(response.body(), ChatMessage.class);
-        assertEquals("alice", message.sender());
-        assertEquals("hello", message.text());
+        Assertions.assertEquals(201, response.statusCode());
+        Message message = ChatJson.read(response.body(), Message.class);
+        Assertions.assertEquals("alice", message.sender());
+        Assertions.assertEquals("hello", message.text());
 
-        var history = get("/messages/alice?limit=10");
-        assertEquals(200, history.statusCode());
-        assertTrue(history.body().contains("\"text\":\"hello\""));
+        HttpResponse<String> history = get("/messages/alice?limit=10");
+        Assertions.assertEquals(200, history.statusCode());
+        Assertions.assertTrue(history.body().contains("\"text\":\"hello\""));
     }
 
     @Test
     void notificationsCanBeDisabled() throws Exception {
         post("/sessions/alice", "");
 
-        var response = put("/notifications/alice", "{\"enabled\":false}");
+        HttpResponse<String> response = put("/notifications/alice", "{\"enabled\":false}");
 
-        assertEquals(204, response.statusCode());
-        assertFalse(ChatJson.read(get("/users/alice").body(), UserState.class).notificationsEnabled());
+        Assertions.assertEquals(204, response.statusCode());
+        Assertions.assertFalse(ChatJson.read(get("/users/alice").body(), ChatUser.class).notificationsEnabled());
     }
 
     @Test
     void disconnectMarksUserOffline() throws Exception {
         post("/sessions/alice", "");
 
-        assertEquals(204, delete("/sessions/alice").statusCode());
-        assertFalse(ChatJson.read(get("/users/alice").body(), UserState.class).online());
+        Assertions.assertEquals(204, delete("/sessions/alice").statusCode());
+        Assertions.assertFalse(ChatJson.read(get("/users/alice").body(), ChatUser.class).online());
     }
 
     @Test
     void unknownUserAndRouteReturnNotFound() throws Exception {
-        assertEquals(404, get("/users/nobody").statusCode());
-        assertEquals(404, get("/nonsense").statusCode());
-        assertEquals(404, post("/messages/nobody", "{\"text\":\"hi\"}").statusCode());
+        Assertions.assertEquals(404, get("/users/nobody").statusCode());
+        Assertions.assertEquals(404, get("/nonsense").statusCode());
+        Assertions.assertEquals(404, post("/messages/nobody", "{\"text\":\"hi\"}").statusCode());
     }
 
     @Test
     void malformedJsonAndBlankFieldsReturnBadRequest() throws Exception {
         post("/sessions/alice", "");
 
-        assertEquals(400, post("/messages/alice", "{not-json").statusCode());
-        assertEquals(400, post("/messages/alice", "{\"text\":\"   \"}").statusCode());
-        assertEquals(400, post("/sessions/%20", "").statusCode());
+        Assertions.assertEquals(400, post("/messages/alice", "{not-json").statusCode());
+        Assertions.assertEquals(400, post("/messages/alice", "{\"text\":\"   \"}").statusCode());
+        Assertions.assertEquals(400, post("/sessions/%20", "").statusCode());
     }
 
     @Test
     void unsupportedMethodReturnsNotFound() throws Exception {
-        var request = HttpRequest.newBuilder(base.resolve("/sessions/alice"))
+        HttpRequest request = HttpRequest.newBuilder(base.resolve("/sessions/alice"))
                 .method("PATCH", HttpRequest.BodyPublishers.noBody())
                 .build();
 
-        assertEquals(404, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+        Assertions.assertEquals(404, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
 
     @Test
     void eventsStreamDeliversSentMessage() throws Exception {
         post("/sessions/alice", "");
-        var events =
+        HttpRequest events =
                 HttpRequest.newBuilder(base.resolve("/events/alice"))
                         .header("Accept", "text/event-stream")
                         .GET()
                         .build();
-        var response = client.send(events, HttpResponse.BodyHandlers.ofInputStream());
-        assertEquals(200, response.statusCode());
-        assertTrue(
+        HttpResponse<InputStream> response = client.send(events, HttpResponse.BodyHandlers.ofInputStream());
+        Assertions.assertEquals(200, response.statusCode());
+        Assertions.assertTrue(
                 response.headers()
                         .firstValue("Content-Type")
                         .orElse("")
                         .startsWith("text/event-stream"));
 
-        var firstEvent =
+        CompletableFuture<String> firstEvent =
                 CompletableFuture.supplyAsync(
                         () -> {
-                            try (var reader =
+                            try (BufferedReader reader =
                                     new BufferedReader(
                                             new InputStreamReader(
                                                     response.body(), StandardCharsets.UTF_8))) {
@@ -162,15 +161,15 @@ final class ChatHttpServerTest {
         post("/sessions/bob", "");
         post("/messages/bob", "{\"text\":\"live\"}");
 
-        var data = firstEvent.get(5, TimeUnit.SECONDS);
-        assertNotNull(data);
-        assertTrue(data.contains("\"text\":\"live\""));
+        String data = firstEvent.get(5, TimeUnit.SECONDS);
+        Assertions.assertNotNull(data);
+        Assertions.assertTrue(data.contains("\"text\":\"live\""));
         response.body().close();
     }
 
     @Test
     void eventsForUnknownUserReturnNotFound() throws Exception {
-        assertEquals(404, get("/events/ghost").statusCode());
+        Assertions.assertEquals(404, get("/events/ghost").statusCode());
     }
 
     private HttpResponse<String> get(String path) throws Exception {
@@ -190,11 +189,11 @@ final class ChatHttpServerTest {
     }
 
     private HttpResponse<String> send(String method, String path, String body) throws Exception {
-        var publisher =
+        HttpRequest.BodyPublisher publisher =
                 body == null
                         ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
-        var request =
+        HttpRequest request =
                 HttpRequest.newBuilder(base.resolve(path))
                         .header("Content-Type", "application/json")
                         .method(method, publisher)

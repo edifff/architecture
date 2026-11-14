@@ -1,15 +1,13 @@
 package ru.archlabs.chat.api;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatValidationException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
+
 
 final class FacadesTest {
     private FakeChatGateway gateway;
@@ -23,22 +21,22 @@ final class FacadesTest {
 
     @Test
     void messageFacadeParsesTrimsAndSends() {
-        var message = facades.messages().send("alice", "{\"text\":\"  hello  \"}");
+        Message message = facades.messages().send("alice", "{\"text\":\"  hello  \"}");
 
-        assertEquals("alice", message.sender());
-        assertEquals("hello", gateway.lastText);
+        Assertions.assertEquals("alice", message.sender());
+        Assertions.assertEquals("hello", gateway.lastText());
     }
 
     @Test
     void messageFacadeRejectsMalformedJson() {
-        assertThrows(
+        Assertions.assertThrows(
                 ChatValidationException.class,
                 () -> facades.messages().send("alice", "{not-json"));
     }
 
     @Test
     void messageFacadeRejectsBlankText() {
-        assertThrows(
+        Assertions.assertThrows(
                 ChatValidationException.class,
                 () -> facades.messages().send("alice", "{\"text\":\"   \"}"));
     }
@@ -46,21 +44,21 @@ final class FacadesTest {
     @Test
     void historyUsesDefaultAndBoundedLimits() {
         facades.messages().history("alice", null);
-        assertEquals(50, gateway.lastLimit);
+        Assertions.assertEquals(50, gateway.lastLimit());
 
         facades.messages().history("alice", "7");
-        assertEquals(7, gateway.lastLimit);
+        Assertions.assertEquals(7, gateway.lastLimit());
 
         facades.messages().history("alice", "5000");
-        assertEquals(1000, gateway.lastLimit);
+        Assertions.assertEquals(1000, gateway.lastLimit());
     }
 
     @Test
     void historyRejectsInvalidLimit() {
-        assertThrows(
+        Assertions.assertThrows(
                 ChatValidationException.class,
                 () -> facades.messages().history("alice", "0"));
-        assertThrows(
+        Assertions.assertThrows(
                 ChatValidationException.class,
                 () -> facades.messages().history("alice", "many"));
     }
@@ -69,37 +67,37 @@ final class FacadesTest {
     void notificationFacadeParsesBoolean() {
         facades.notifications().setEnabled("alice", "{\"enabled\":false}");
 
-        assertEquals("alice", gateway.lastUser);
-        assertFalse(gateway.lastEnabled);
+        Assertions.assertEquals("alice", gateway.lastUser());
+        Assertions.assertFalse(gateway.lastEnabled());
     }
 
     @Test
     void notificationFacadeSubscribes() {
-        var subscription = facades.notifications().subscribe("alice", ignored -> {
+        AutoCloseable subscription = facades.notifications().subscribe("alice", ignored -> {
         });
 
-        assertNotNull(subscription);
-        assertNotNull(gateway.lastListener);
+        Assertions.assertNotNull(subscription);
+        Assertions.assertNotNull(gateway.lastListener());
     }
 
     @Test
     void rejectsBlankUser() {
-        assertThrows(ChatValidationException.class, () -> facades.sessions().connect("  "));
+        Assertions.assertThrows(ChatValidationException.class, () -> facades.sessions().connect("  "));
     }
 
     @Test
     void connectReturnsUserState() {
-        var user = facades.sessions().connect("alice");
+        ChatUser user = facades.sessions().connect("alice");
 
-        assertEquals("alice", user.name());
-        assertTrue(user.online());
+        Assertions.assertEquals("alice", user.name());
+        Assertions.assertTrue(user.online());
     }
 
     @Test
     void sendReturnsCreatedMessageRecord() {
-        ChatMessage message = facades.messages().send("alice", "{\"text\":\"hello\"}");
+        Message message = facades.messages().send("alice", "{\"text\":\"hello\"}");
 
-        assertEquals(1, message.id());
-        assertEquals("hello", message.text());
+        Assertions.assertEquals(1, message.id());
+        Assertions.assertEquals("hello", message.text());
     }
 }

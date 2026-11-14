@@ -11,7 +11,7 @@ final class ConnectionAttribute {
     }
 
     static void closeSubscription(ChannelHandlerContext ctx) {
-        var subscription = ctx.channel().attr(EVENT_SUBSCRIPTION).getAndSet(null);
+        AutoCloseable subscription = ctx.channel().attr(EVENT_SUBSCRIPTION).getAndSet(null);
         if (subscription != null) {
             try {
                 subscription.close();

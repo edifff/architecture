@@ -1,30 +1,30 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.metrics.ChatMetrics;
-
 import java.util.List;
 import java.util.function.Consumer;
+
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
  * Boundary between the HTTP input element and the chat implementation.
  * Lab 3 supplies an in-process implementation; lab 5 supplies a gRPC one.
  */
 public interface ChatGateway extends AutoCloseable {
-    UserState connect(String user);
+    ChatUser connect(String user);
 
     void disconnect(String user);
 
-    ChatMessage send(String user, String text);
+    Message send(String user, String text);
 
-    List<ChatMessage> history(String user, int limit);
+    List<Message> history(String user, int limit);
 
     void setNotificationsEnabled(String user, boolean enabled);
 
-    UserState user(String user);
+    ChatUser user(String user);
 
-    AutoCloseable subscribe(String user, Consumer<ChatMessage> listener);
+    AutoCloseable subscribe(String user, Consumer<Message> listener);
 
     ChatMetrics metrics();
 

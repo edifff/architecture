@@ -1,5 +1,10 @@
 package ru.archlabs.chat.storage;
 
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.MetricsHttpServer;
 import ru.archlabs.chat.service.ChatServerImpl;
 
@@ -7,30 +12,32 @@ import ru.archlabs.chat.service.ChatServerImpl;
  * Lab 2 demo. The H2 URL can be overridden with ARCHLABS_DB_URL.
  */
 public final class PersistentChatDemo {
+    private static final String ALICE = "alice";
+
     private PersistentChatDemo() {
     }
 
     public static void main(String[] args) throws Exception {
-        var url =
+        String url =
                 System.getenv()
                         .getOrDefault(
                                 "ARCHLABS_DB_URL",
                                 "jdbc:h2:file:./data/chat;DB_CLOSE_ON_EXIT=FALSE");
-        try (var server = new ChatServerImpl(new JdbcChatStorage(url));
-                var metrics = new MetricsHttpServer(server.metrics(), 9101)) {
+        try (ChatServerImpl server = new ChatServerImpl(new JdbcChatStorage(url));
+                MetricsHttpServer metrics = new MetricsHttpServer(server.metrics(), 9101)) {
             metrics.start();
-            var alice = server.connect("alice");
+            ChatSession alice = server.connect(ALICE);
             alice.setNotificationsEnabled(true);
             alice.close();
 
-            var bob = server.connect("bob");
+            ChatSession bob = server.connect("bob");
             bob.send("hello from the previous run");
             bob.close();
 
-            var inbox = new java.util.concurrent.LinkedBlockingQueue<ru.archlabs.chat.domain.ChatMessage>();
-            var reconnect = server.connect("alice");
+            LinkedBlockingQueue<Message> inbox = new LinkedBlockingQueue<Message>();
+            ChatSession reconnect = server.connect(ALICE);
             reconnect.addListener(inbox::add);
-            var pending = inbox.poll(1, java.util.concurrent.TimeUnit.SECONDS);
+            Message pending = inbox.poll(1, TimeUnit.SECONDS);
             System.out.println("pending notification: " + pending);
             System.out.println("history: " + server.history(20));
             System.out.println("metrics: http://localhost:" + metrics.port() + "/metrics");

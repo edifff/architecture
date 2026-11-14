@@ -1,8 +1,8 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.domain.ChatMessage;
-
 import java.util.function.Consumer;
+
+import ru.archlabs.chat.domain.Message;
 
 public final class NotificationFacade {
     private final ChatGateway gateway;
@@ -12,11 +12,11 @@ public final class NotificationFacade {
     }
 
     public void setEnabled(String user, String body) {
-        var request = ChatJson.read(body, NotificationsRequest.class);
+        NotificationsRequest request = ChatJson.read(body, NotificationsRequest.class);
         gateway.setNotificationsEnabled(FacadeSupport.requireUser(user), request.enabled());
     }
 
-    public AutoCloseable subscribe(String user, Consumer<ChatMessage> listener) {
+    public AutoCloseable subscribe(String user, Consumer<Message> listener) {
         return gateway.subscribe(FacadeSupport.requireUser(user), listener);
     }
 }

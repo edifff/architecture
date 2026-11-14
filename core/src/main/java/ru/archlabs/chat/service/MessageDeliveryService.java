@@ -1,9 +1,9 @@
 package ru.archlabs.chat.service;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.metrics.ChatMetrics;
-
 import java.util.List;
+
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
  * Logical category: fan-out of a stored message to live sessions.
@@ -20,9 +20,9 @@ final class MessageDeliveryService {
         this.metrics = metrics;
     }
 
-    int deliver(List<ChatSessionImpl> recipients, ChatMessage message) {
-        var delivered = 0;
-        for (var recipient : recipients) {
+    int deliver(List<ChatSessionImpl> recipients, Message message) {
+        int delivered = 0;
+        for (ChatSessionImpl recipient : recipients) {
             if (!users.notificationsEnabled(recipient.userName())) {
                 continue;
             }

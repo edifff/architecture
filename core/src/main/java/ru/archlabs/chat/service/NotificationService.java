@@ -1,11 +1,11 @@
 package ru.archlabs.chat.service;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotification;
-import ru.archlabs.chat.storage.ChatStorage;
-
 import java.time.Clock;
 import java.util.List;
+
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
+import ru.archlabs.chat.storage.ChatStorage;
 
 /**
  * Logical category: notification outbox and delivery acknowledgement.
@@ -19,11 +19,11 @@ final class NotificationService {
         this.clock = clock;
     }
 
-    List<ChatNotification> pending(String recipient) {
+    List<Notification> pending(String recipient) {
         return storage.pendingNotifications(recipient);
     }
 
-    ChatNotification enqueue(String recipient, ChatMessage message) {
+    Notification enqueue(String recipient, Message message) {
         return storage.enqueueNotification(recipient, message, clock.instant());
     }
 

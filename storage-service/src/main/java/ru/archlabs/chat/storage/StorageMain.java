@@ -1,6 +1,8 @@
 package ru.archlabs.chat.storage;
 
+import io.grpc.Server;
 import io.grpc.ServerBuilder;
+
 import ru.archlabs.chat.metrics.ChatMetrics;
 import ru.archlabs.chat.metrics.MetricsHttpServer;
 
@@ -12,24 +14,24 @@ public final class StorageMain {
     }
 
     public static void main(String[] args) throws Exception {
-        var port = intEnv("STORAGE_PORT", 9092);
-        var metricsPort = intEnv("STORAGE_METRICS_PORT", 9102);
-        var dbUrl =
+        int port = intEnv("STORAGE_PORT", 9092);
+        int metricsPort = intEnv("STORAGE_METRICS_PORT", 9102);
+        String dbUrl =
                 System.getenv()
                         .getOrDefault(
                                 "ARCHLABS_DB_URL",
                                 "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0");
 
-        var storage = new JdbcChatStorage(dbUrl);
+        JdbcChatStorage storage = new JdbcChatStorage(dbUrl);
         storage.initialize();
         storage.resetOnlineUsers();
-        var metrics = new ChatMetrics();
-        var server =
+        ChatMetrics metrics = new ChatMetrics();
+        Server server =
                 ServerBuilder.forPort(port)
                         .addService(new StorageGrpcService(storage, metrics))
                         .build()
                         .start();
-        var metricsServer = new MetricsHttpServer(metrics, metricsPort);
+        MetricsHttpServer metricsServer = new MetricsHttpServer(metrics, metricsPort);
         metricsServer.start();
         Runtime.getRuntime()
                 .addShutdownHook(
@@ -46,7 +48,7 @@ public final class StorageMain {
     }
 
     private static int intEnv(String name, int fallback) {
-        var value = System.getenv(name);
+        String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : Integer.parseInt(value);
     }
 }

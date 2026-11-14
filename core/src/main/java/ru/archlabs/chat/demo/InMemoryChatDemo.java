@@ -1,5 +1,6 @@
 package ru.archlabs.chat.demo;
 
+import ru.archlabs.chat.ChatSession;
 import ru.archlabs.chat.metrics.MetricsHttpServer;
 import ru.archlabs.chat.service.ChatServerImpl;
 
@@ -11,12 +12,12 @@ public final class InMemoryChatDemo {
     }
 
     public static void main(String[] args) throws Exception {
-        try (var server = new ChatServerImpl();
-                var metrics = new MetricsHttpServer(server.metrics(), 9100)) {
+        try (ChatServerImpl server = new ChatServerImpl();
+                MetricsHttpServer metrics = new MetricsHttpServer(server.metrics(), 9100)) {
             metrics.start();
-            var alice = server.connect("alice");
+            ChatSession alice = server.connect("alice");
             alice.addListener(message -> System.out.println("alice <- " + message));
-            var bob = server.connect("bob");
+            ChatSession bob = server.connect("bob");
             bob.addListener(message -> System.out.println("bob <- " + message));
 
             bob.send("hello from bob");

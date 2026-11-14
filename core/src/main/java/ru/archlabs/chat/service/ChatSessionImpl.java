@@ -1,9 +1,5 @@
 package ru.archlabs.chat.service;
 
-import ru.archlabs.chat.ChatSession;
-import ru.archlabs.chat.domain.ChatConflictException;
-import ru.archlabs.chat.domain.ChatMessage;
-
 import java.util.List;
 import java.util.Objects;
 import java.util.Queue;
@@ -12,16 +8,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
+import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.domain.ChatConflictException;
+import ru.archlabs.chat.domain.Message;
+
 /**
  * Logical category: one user's live session, listener fan-out, and local backlog.
  */
 final class ChatSessionImpl implements ChatSession {
-    private record Delivery(ChatMessage message, Long notificationId) {
-    }
-
     private final ChatServerImpl server;
     private final String userName;
-    private final List<Consumer<ChatMessage>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<Message>> listeners = new CopyOnWriteArrayList<>();
     private final Queue<Delivery> pending = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -36,13 +33,13 @@ final class ChatSessionImpl implements ChatSession {
     }
 
     @Override
-    public ChatMessage send(String text) {
+    public Message send(String text) {
         ensureOpen();
         return server.send(this, text);
     }
 
     @Override
-    public List<ChatMessage> history(int limit) {
+    public List<Message> history(int limit) {
         ensureOpen();
         return server.history(this, limit);
     }
@@ -54,7 +51,7 @@ final class ChatSessionImpl implements ChatSession {
     }
 
     @Override
-    public AutoCloseable addListener(Consumer<ChatMessage> listener) {
+    public AutoCloseable addListener(Consumer<Message> listener) {
         ensureOpen();
         Objects.requireNonNull(listener, "listener");
         listeners.add(listener);
@@ -66,11 +63,11 @@ final class ChatSessionImpl implements ChatSession {
      * Accepts a message for this session. A notification id means the message must be
      * acknowledged only after a listener has consumed it.
      */
-    boolean deliver(ChatMessage message, Long notificationId) {
+    boolean deliver(Message message, Long notificationId) {
         if (closed.get()) {
             return false;
         }
-        var delivery = new Delivery(message, notificationId);
+        Delivery delivery = new Delivery(message, notificationId);
         if (listeners.isEmpty() || !dispatch(delivery)) {
             pending.add(delivery);
         }
@@ -83,7 +80,7 @@ final class ChatSessionImpl implements ChatSession {
 
     private void drain() {
         while (!closed.get()) {
-            var delivery = pending.poll();
+            Delivery delivery = pending.poll();
             if (delivery == null) {
                 return;
             }
@@ -95,11 +92,11 @@ final class ChatSessionImpl implements ChatSession {
     }
 
     private boolean dispatch(Delivery delivery) {
-        var current = List.copyOf(listeners);
+        List<Consumer<Message>> current = List.copyOf(listeners);
         if (current.isEmpty()) {
             return false;
         }
-        for (var listener : current) {
+        for (Consumer<Message> listener : current) {
             try {
                 listener.accept(delivery.message());
             } catch (RuntimeException exception) {
@@ -125,5 +122,8 @@ final class ChatSessionImpl implements ChatSession {
         if (closed.get()) {
             throw new ChatConflictException("Session is not active");
         }
+    }
+
+    private record Delivery(Message message, Long notificationId) {
     }
 }

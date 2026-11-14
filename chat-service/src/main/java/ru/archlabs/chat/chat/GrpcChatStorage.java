@@ -1,30 +1,37 @@
 package ru.archlabs.chat.chat;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+
 import ru.archlabs.chat.domain.ChatConflictException;
-import ru.archlabs.chat.domain.ChatMessage;
 import ru.archlabs.chat.domain.ChatNotFoundException;
-import ru.archlabs.chat.domain.ChatNotification;
+import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
 import ru.archlabs.chat.storage.ChatStorage;
 import ru.archlabs.chat.storage.StorageException;
+import ru.archlabs.proto.common.ChatMessage;
+import ru.archlabs.proto.common.ChatNotification;
 import ru.archlabs.proto.common.Empty;
 import ru.archlabs.proto.storage.AppendMessageRequest;
 import ru.archlabs.proto.storage.ConnectRequest;
 import ru.archlabs.proto.storage.EnqueueNotificationRequest;
 import ru.archlabs.proto.storage.HistoryRequest;
+import ru.archlabs.proto.storage.HistoryResponse;
 import ru.archlabs.proto.storage.MarkDeliveredRequest;
+import ru.archlabs.proto.storage.NotificationsResponse;
 import ru.archlabs.proto.storage.SetNotificationsRequest;
 import ru.archlabs.proto.storage.StorageServiceGrpc;
 import ru.archlabs.proto.storage.UserRequest;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import ru.archlabs.proto.storage.UsersResponse;
 
 /**
  * Domain-side adapter for the storage layer. No JDBC or H2 classes leak here.
@@ -76,7 +83,7 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     @Override
-    public Optional<UserState> findUser(String name) {
+    public Optional<ChatUser> findUser(String name) {
         try {
             return Optional.of(
                     ChatProtoMapper.fromProto(
@@ -90,15 +97,15 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<UserState> allUsers() {
-        var response = call(() -> stub.listUsers(Empty.getDefaultInstance()));
+    public List<ChatUser> allUsers() {
+        UsersResponse response = call(() -> stub.listUsers(Empty.getDefaultInstance()));
         return response.getUsersList().stream().map(ChatProtoMapper::fromProto).toList();
     }
 
     @Override
-    public ChatMessage appendMessage(
+    public Message appendMessage(
             String sender, String text, List<String> notificationRecipients, Instant at) {
-        var response =
+        ChatMessage response =
                 call(
                         () ->
                                 stub.appendMessage(
@@ -112,8 +119,8 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatMessage> history(int limit) {
-        var response =
+    public List<Message> history(int limit) {
+        HistoryResponse response =
                 call(
                         () ->
                                 stub.history(
@@ -122,8 +129,8 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     @Override
-    public ChatNotification enqueueNotification(String recipient, ChatMessage message, Instant at) {
-        var response =
+    public Notification enqueueNotification(String recipient, Message message, Instant at) {
+        ChatNotification response =
                 call(
                         () ->
                                 stub.enqueueNotification(
@@ -136,8 +143,8 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatNotification> pendingNotifications(String recipient) {
-        var response =
+    public List<Notification> pendingNotifications(String recipient) {
+        NotificationsResponse response =
                 call(
                         () ->
                                 stub.pendingNotifications(
@@ -167,7 +174,7 @@ public final class GrpcChatStorage implements ChatStorage {
     public void close() {
     }
 
-    private static <T> T call(java.util.function.Supplier<T> action) {
+    private static <T> T call(Supplier<T> action) {
         try {
             return action.get();
         } catch (StatusRuntimeException exception) {
@@ -176,8 +183,8 @@ public final class GrpcChatStorage implements ChatStorage {
     }
 
     private static RuntimeException map(StatusRuntimeException exception) {
-        var description = exception.getStatus().getDescription();
-        var code = exception.getStatus().getCode();
+        String description = exception.getStatus().getDescription();
+        Status.Code code = exception.getStatus().getCode();
         return switch (code) {
             case INVALID_ARGUMENT -> new ChatValidationException(
                     description == null ? "Invalid storage request" : description);

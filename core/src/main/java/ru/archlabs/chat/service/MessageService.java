@@ -1,11 +1,11 @@
 package ru.archlabs.chat.service;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.storage.ChatStorage;
-
 import java.time.Clock;
 import java.util.List;
+
+import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.storage.ChatStorage;
 
 /**
  * Logical category: message creation and history.
@@ -19,12 +19,12 @@ final class MessageService {
         this.clock = clock;
     }
 
-    ChatMessage append(String sender, String text, List<String> notificationRecipients) {
-        var body = requireText(text);
+    Message append(String sender, String text, List<String> notificationRecipients) {
+        String body = requireText(text);
         return storage.appendMessage(sender, body, notificationRecipients, clock.instant());
     }
 
-    List<ChatMessage> history(int limit) {
+    List<Message> history(int limit) {
         if (limit <= 0) {
             throw new ChatValidationException("History limit must be positive");
         }

@@ -6,22 +6,22 @@ import java.util.Objects;
 /**
  * Current presence and notification preferences of a user.
  */
-public record UserState(String name, boolean online, boolean notificationsEnabled, Instant lastSeen) {
-    public UserState {
+public record ChatUser(String name, boolean online, boolean notificationsEnabled, Instant lastSeen) {
+    public ChatUser {
         name = requireText(name, "Username");
         lastSeen = Objects.requireNonNull(lastSeen, "lastSeen");
     }
 
-    public static UserState initial(String name, Instant at) {
-        return new UserState(name, true, true, at);
+    public static ChatUser initial(String name, Instant at) {
+        return new ChatUser(name, true, true, at);
     }
 
-    public UserState withOnline(boolean online, Instant at) {
-        return new UserState(name, online, notificationsEnabled, at);
+    public ChatUser withOnline(boolean online, Instant at) {
+        return new ChatUser(name, online, notificationsEnabled, at);
     }
 
-    public UserState withNotifications(boolean enabled) {
-        return new UserState(name, online, enabled, lastSeen);
+    public ChatUser withNotifications(boolean enabled) {
+        return new ChatUser(name, online, enabled, lastSeen);
     }
 
     private static String requireText(String value, String label) {

@@ -3,6 +3,16 @@
 This repository is a step-by-step implementation of the five architecture labs. The
 chat option was selected for lab 1, and Netty was selected for the IP interface in lab 3.
 
+## Code style
+
+```shell
+mvn checkstyle:check
+```
+
+Checkstyle runs during `validate`; `var` is forbidden. The project intentionally uses
+no Javadoc comments, so Javadoc checks and repeated-string checks in tests are
+suppressed in `suppressions.xml`.
+
 All previous history is preserved. The commit before the rebuild is tagged
 `pre-rebuild`; the rebuild itself starts with `chore: clear working tree for the lab
 rebuild`.
@@ -18,9 +28,9 @@ class:
 
 | Category | Class |
 | --- | --- |
-| Message | `domain.ChatMessage` |
-| Notification | `domain.ChatNotification` |
-| User presence/preferences | `domain.UserState` |
+| Message | `domain.Message` |
+| Notification | `domain.Notification` |
+| User presence/preferences | `domain.ChatUser` |
 | Session | `ChatSession`, `service.ChatSessionImpl` |
 | Session registry | `service.SessionRegistry` |
 | User accounts | `service.UserAccountService` |

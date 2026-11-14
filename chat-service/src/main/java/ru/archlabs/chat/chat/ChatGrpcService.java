@@ -1,9 +1,15 @@
 package ru.archlabs.chat.chat;
 
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
+
 import ru.archlabs.chat.ChatServer;
 import ru.archlabs.chat.ChatSession;
 import ru.archlabs.chat.domain.ChatConflictException;
@@ -20,15 +26,12 @@ import ru.archlabs.proto.common.ChatMessage;
 import ru.archlabs.proto.common.Empty;
 import ru.archlabs.proto.common.UserState;
 
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
-
 /**
  * Domain layer contract over gRPC. The domain has no Netty, HTTP, or JDBC code.
  */
 public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
+    private static final String NOT_CONNECTED = "User is not connected: ";
+
     private final ChatServer server;
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
 
@@ -41,7 +44,7 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
         unary(
                 observer,
                 () -> {
-                    var session = server.connect(request.getName());
+                    ChatSession session = server.connect(request.getName());
                     sessions.put(session.userName(), session);
                     return ChatProtoMapper.toProto(server.user(session.userName()));
                 });
@@ -52,9 +55,9 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
         unary(
                 observer,
                 () -> {
-                    var session = sessions.remove(request.getName());
+                    ChatSession session = sessions.remove(request.getName());
                     if (session == null) {
-                        throw new ChatNotFoundException("User is not connected: " + request.getName());
+                        throw new ChatNotFoundException(NOT_CONNECTED + request.getName());
                     }
                     session.close();
                     return Empty.getDefaultInstance();
@@ -103,10 +106,10 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
 
     @Override
     public void subscribe(UserRequest request, StreamObserver<ChatMessage> responseObserver) {
-        var observer = (ServerCallStreamObserver<ChatMessage>) responseObserver;
+        ServerCallStreamObserver<ChatMessage> observer = (ServerCallStreamObserver<ChatMessage>) responseObserver;
         try {
-            var session = requireSession(request.getName());
-            var subscription =
+            ChatSession session = requireSession(request.getName());
+            AutoCloseable subscription =
                     session.addListener(
                             message -> {
                                 if (!observer.isCancelled()) {
@@ -120,9 +123,9 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     }
 
     private ChatSession requireSession(String name) {
-        var session = sessions.get(name);
+        ChatSession session = sessions.get(name);
         if (session == null) {
-            throw new ChatNotFoundException("User is not connected: " + name);
+            throw new ChatNotFoundException(NOT_CONNECTED + name);
         }
         return session;
     }
@@ -137,7 +140,7 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     }
 
     private static StatusRuntimeException status(RuntimeException exception) {
-        var description =
+        String description =
                 exception.getMessage() == null
                         ? exception.getClass().getSimpleName()
                         : exception.getMessage();

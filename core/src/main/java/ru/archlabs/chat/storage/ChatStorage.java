@@ -1,12 +1,12 @@
 package ru.archlabs.chat.storage;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotification;
-import ru.archlabs.chat.domain.UserState;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
 
 /**
  * Storage port used by the domain. Implementations may be in memory or embedded.
@@ -20,17 +20,17 @@ public interface ChatStorage extends AutoCloseable {
 
     void setNotificationsEnabled(String name, boolean enabled);
 
-    Optional<UserState> findUser(String name);
+    Optional<ChatUser> findUser(String name);
 
-    List<UserState> allUsers();
+    List<ChatUser> allUsers();
 
-    ChatMessage appendMessage(String sender, String text, List<String> notificationRecipients, Instant at);
+    Message appendMessage(String sender, String text, List<String> notificationRecipients, Instant at);
 
-    List<ChatMessage> history(int limit);
+    List<Message> history(int limit);
 
-    ChatNotification enqueueNotification(String recipient, ChatMessage message, Instant at);
+    Notification enqueueNotification(String recipient, Message message, Instant at);
 
-    List<ChatNotification> pendingNotifications(String recipient);
+    List<Notification> pendingNotifications(String recipient);
 
     void markNotificationDelivered(long notificationId, Instant at);
 

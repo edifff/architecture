@@ -4,15 +4,15 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * A notification that has not necessarily been delivered yet.
+ * A single chat message. Messages are immutable and always have a storage id.
  */
-public record ChatNotification(long id, String recipient, ChatMessage message, Instant createdAt) {
-    public ChatNotification {
+public record Message(long id, String sender, String text, Instant createdAt) {
+    public Message {
         if (id <= 0) {
-            throw new IllegalArgumentException("Notification id must be positive");
+            throw new IllegalArgumentException("Message id must be positive");
         }
-        recipient = requireText(recipient, "Recipient");
-        message = Objects.requireNonNull(message, "message");
+        sender = requireText(sender, "Sender");
+        text = requireText(text, "Message");
         createdAt = Objects.requireNonNull(createdAt, "createdAt");
     }
 

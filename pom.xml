@@ -79,6 +79,7 @@
                 <version>3.6.0</version>
                 <configuration>
                     <configLocation>${session.executionRootDirectory}/checkstyle.xml</configLocation>
+                    <suppressionsLocation>${session.executionRootDirectory}/suppressions.xml</suppressionsLocation>
                     <consoleOutput>true</consoleOutput>
                     <includeTestSourceDirectory>true</includeTestSourceDirectory>
                     <failOnViolation>true</failOnViolation>

@@ -1,14 +1,21 @@
 package ru.archlabs.chat.chat;
 
+import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import ru.archlabs.chat.service.ChatServerImpl;
 import ru.archlabs.proto.chat.ChatServiceGrpc;
 import ru.archlabs.proto.chat.ConnectRequest;
@@ -16,14 +23,9 @@ import ru.archlabs.proto.chat.HistoryRequest;
 import ru.archlabs.proto.chat.SendMessageRequest;
 import ru.archlabs.proto.chat.SetNotificationsRequest;
 import ru.archlabs.proto.chat.UserRequest;
+import ru.archlabs.proto.common.ChatMessage;
+import ru.archlabs.proto.common.UserState;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ChatGrpcServiceTest {
     private ChatServerImpl domain;
@@ -33,7 +35,7 @@ final class ChatGrpcServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        var name = InProcessServerBuilder.generateName();
+        String name = InProcessServerBuilder.generateName();
         domain = new ChatServerImpl();
         server =
                 InProcessServerBuilder.forName(name)
@@ -54,16 +56,16 @@ final class ChatGrpcServiceTest {
 
     @Test
     void exposesDomainContractOverGrpc() {
-        assertTrue(connect("alice").getOnline());
+        Assertions.assertTrue(connect("alice").getOnline());
 
-        var message =
+        ChatMessage message =
                 chat.send(
                         SendMessageRequest.newBuilder()
                                 .setName("alice")
                                 .setText("hello")
                                 .build());
-        assertEquals("hello", message.getText());
-        assertEquals(
+        Assertions.assertEquals("hello", message.getText());
+        Assertions.assertEquals(
                 1,
                 chat.history(
                                 HistoryRequest.newBuilder()
@@ -74,7 +76,7 @@ final class ChatGrpcServiceTest {
 
         chat.setNotifications(
                 SetNotificationsRequest.newBuilder().setName("alice").setEnabled(false).build());
-        assertFalse(
+        Assertions.assertFalse(
                 chat.getUser(UserRequest.newBuilder().setName("alice").build())
                         .getNotificationsEnabled());
     }
@@ -83,25 +85,25 @@ final class ChatGrpcServiceTest {
     void streamsLiveMessages() throws Exception {
         connect("alice");
         connect("bob");
-        var iterator = chat.subscribe(UserRequest.newBuilder().setName("alice").build());
-        var next = CompletableFuture.supplyAsync(iterator::next);
+        Iterator<ChatMessage> iterator = chat.subscribe(UserRequest.newBuilder().setName("alice").build());
+        CompletableFuture<ChatMessage> next = CompletableFuture.supplyAsync(iterator::next);
 
         chat.send(SendMessageRequest.newBuilder().setName("bob").setText("live").build());
 
-        var message = next.get(5, TimeUnit.SECONDS);
-        assertEquals("bob", message.getSender());
-        assertEquals("live", message.getText());
+        ChatMessage message = next.get(5, TimeUnit.SECONDS);
+        Assertions.assertEquals("bob", message.getSender());
+        Assertions.assertEquals("live", message.getText());
     }
 
     @Test
     void duplicateConnectionMapsToAlreadyExists() {
         connect("alice");
 
-        var error =
-                assertThrows(
+        StatusRuntimeException error =
+                Assertions.assertThrows(
                         StatusRuntimeException.class,
                         () -> connect("alice"));
-        assertEquals(Status.Code.ALREADY_EXISTS, error.getStatus().getCode());
+        Assertions.assertEquals(Status.Code.ALREADY_EXISTS, error.getStatus().getCode());
     }
 
     @Test
@@ -109,11 +111,11 @@ final class ChatGrpcServiceTest {
         connect("alice");
         chat.disconnect(UserRequest.newBuilder().setName("alice").build());
 
-        assertFalse(
+        Assertions.assertFalse(
                 chat.getUser(UserRequest.newBuilder().setName("alice").build()).getOnline());
     }
 
-    private ru.archlabs.proto.common.UserState connect(String user) {
+    private UserState connect(String user) {
         return chat.connect(ConnectRequest.newBuilder().setName(user).build());
     }
 }

@@ -1,28 +1,39 @@
 package ru.archlabs.chat.storage;
 
-import org.h2.jdbcx.JdbcDataSource;
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotification;
-import ru.archlabs.chat.domain.ChatNotFoundException;
-import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
-
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import org.h2.jdbcx.JdbcDataSource;
+
+import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
 
 /**
  * Embedded H2 storage. Every operation uses its own short-lived connection, so the
  * server can be stopped and restarted without losing committed data.
  */
 public final class JdbcChatStorage implements ChatStorage {
+    private static final String AT = "at";
+    private static final String USER_SELECT =
+            "SELECT name, online, notifications_enabled, last_seen ";
+    private static final String SENDER_COLUMN = "sender";
+    private static final String BODY_COLUMN = "body";
+    private static final String INSERT_NOTIFICATION =
+            "INSERT INTO notifications(recipient, message_id, created_at) VALUES (?, ?, ?)";
+
     private final JdbcDataSource dataSource;
 
     public JdbcChatStorage(String jdbcUrl) {
@@ -35,8 +46,8 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void initialize() {
-        try (var connection = open();
-                var statement = connection.createStatement()) {
+        try (Connection connection = open();
+                Statement statement = connection.createStatement()) {
             statement.execute(
                     """
                     CREATE TABLE IF NOT EXISTS users (
@@ -77,16 +88,16 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void connect(String name, Instant at) {
-        var user = requireName(name);
-        Objects.requireNonNull(at, "at");
-        try (var connection = open();
-                var update =
+        String user = requireName(name);
+        Objects.requireNonNull(at, AT);
+        try (Connection connection = open();
+                PreparedStatement update =
                         connection.prepareStatement(
                                 "UPDATE users SET online = TRUE, last_seen = ? WHERE name = ?")) {
             update.setLong(1, at.toEpochMilli());
             update.setString(2, user);
             if (update.executeUpdate() == 0) {
-                try (var insert =
+                try (PreparedStatement insert =
                         connection.prepareStatement(
                                 """
                                 INSERT INTO users(name, online, notifications_enabled, last_seen)
@@ -104,10 +115,10 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void disconnect(String name, Instant at) {
-        var user = requireName(name);
-        Objects.requireNonNull(at, "at");
-        try (var connection = open();
-                var statement =
+        String user = requireName(name);
+        Objects.requireNonNull(at, AT);
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
                                 "UPDATE users SET online = FALSE, last_seen = ? WHERE name = ?")) {
             statement.setLong(1, at.toEpochMilli());
@@ -120,9 +131,9 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void setNotificationsEnabled(String name, boolean enabled) {
-        var user = requireName(name);
-        try (var connection = open();
-                var statement =
+        String user = requireName(name);
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
                                 "UPDATE users SET notifications_enabled = ? WHERE name = ?")) {
             statement.setBoolean(1, enabled);
@@ -136,15 +147,15 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public Optional<UserState> findUser(String name) {
-        var user = requireName(name);
-        try (var connection = open();
-                var statement =
+    public Optional<ChatUser> findUser(String name) {
+        String user = requireName(name);
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
-                                "SELECT name, online, notifications_enabled, last_seen "
+                                USER_SELECT
                                         + "FROM users WHERE name = ?")) {
             statement.setString(1, user);
-            try (var result = statement.executeQuery()) {
+            try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
                     return Optional.empty();
                 }
@@ -156,14 +167,14 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<UserState> allUsers() {
-        try (var connection = open();
-                var statement = connection.createStatement();
-                var result =
+    public List<ChatUser> allUsers() {
+        try (Connection connection = open();
+                Statement statement = connection.createStatement();
+                ResultSet result =
                         statement.executeQuery(
-                                "SELECT name, online, notifications_enabled, last_seen "
+                                USER_SELECT
                                         + "FROM users ORDER BY name")) {
-            var users = new ArrayList<UserState>();
+            ArrayList<ChatUser> users = new ArrayList<ChatUser>();
             while (result.next()) {
                 users.add(readUser(result));
             }
@@ -174,16 +185,16 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public ChatMessage appendMessage(
+    public Message appendMessage(
             String sender, String text, List<String> notificationRecipients, Instant at) {
-        var author = requireName(sender);
-        var body = requireText(text, "Message");
+        String author = requireName(sender);
+        String body = requireText(text, "Message");
         Objects.requireNonNull(notificationRecipients, "notificationRecipients");
-        Objects.requireNonNull(at, "at");
-        try (var connection = open()) {
+        Objects.requireNonNull(at, AT);
+        try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
-                var message = insertMessage(connection, author, body, at);
+                Message message = insertMessage(connection, author, body, at);
                 insertNotifications(connection, message, notificationRecipients, at);
                 connection.commit();
                 return message;
@@ -197,22 +208,22 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatMessage> history(int limit) {
+    public List<Message> history(int limit) {
         if (limit <= 0) {
             throw new ChatValidationException("History limit must be positive");
         }
-        try (var connection = open();
-                var statement =
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
                                 "SELECT id, sender, body, created_at FROM messages "
                                         + "ORDER BY id DESC LIMIT ?")) {
             statement.setInt(1, limit);
-            try (var result = statement.executeQuery()) {
-                var messages = new ArrayList<ChatMessage>();
+            try (ResultSet result = statement.executeQuery()) {
+                ArrayList<Message> messages = new ArrayList<Message>();
                 while (result.next()) {
-                    messages.add(readMessage(result, "id", "sender", "body", "created_at"));
+                    messages.add(readMessage(result, "id", SENDER_COLUMN, BODY_COLUMN, "created_at"));
                 }
-                java.util.Collections.reverse(messages);
+                Collections.reverse(messages);
                 return List.copyOf(messages);
             }
         } catch (SQLException exception) {
@@ -221,11 +232,11 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public ChatNotification enqueueNotification(String recipient, ChatMessage message, Instant at) {
-        var target = requireName(recipient);
+    public Notification enqueueNotification(String recipient, Message message, Instant at) {
+        String target = requireName(recipient);
         Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(at, "at");
-        try (var connection = open()) {
+        Objects.requireNonNull(at, AT);
+        try (Connection connection = open()) {
             return insertNotification(connection, target, message, at);
         } catch (SQLException exception) {
             throw new StorageException("Cannot enqueue notification", exception);
@@ -233,10 +244,10 @@ public final class JdbcChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatNotification> pendingNotifications(String recipient) {
-        var target = requireName(recipient);
-        try (var connection = open();
-                var statement =
+    public List<Notification> pendingNotifications(String recipient) {
+        String target = requireName(recipient);
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
                                 """
                                 SELECT n.id AS notification_id, n.recipient, n.created_at AS notified_at,
@@ -247,17 +258,17 @@ public final class JdbcChatStorage implements ChatStorage {
                                 ORDER BY n.id
                                 """)) {
             statement.setString(1, target);
-            try (var result = statement.executeQuery()) {
-                var pending = new ArrayList<ChatNotification>();
+            try (ResultSet result = statement.executeQuery()) {
+                ArrayList<Notification> pending = new ArrayList<Notification>();
                 while (result.next()) {
-                    var message =
-                            new ChatMessage(
+                    Message message =
+                            new Message(
                                     result.getLong("message_id"),
-                                    result.getString("sender"),
-                                    result.getString("body"),
+                                    result.getString(SENDER_COLUMN),
+                                    result.getString(BODY_COLUMN),
                                     Instant.ofEpochMilli(result.getLong("message_at")));
                     pending.add(
-                            new ChatNotification(
+                            new Notification(
                                     result.getLong("notification_id"),
                                     result.getString("recipient"),
                                     message,
@@ -272,9 +283,9 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void markNotificationDelivered(long notificationId, Instant at) {
-        Objects.requireNonNull(at, "at");
-        try (var connection = open();
-                var statement =
+        Objects.requireNonNull(at, AT);
+        try (Connection connection = open();
+                PreparedStatement statement =
                         connection.prepareStatement(
                                 "UPDATE notifications SET delivered_at = ? "
                                         + "WHERE id = ? AND delivered_at IS NULL")) {
@@ -288,17 +299,17 @@ public final class JdbcChatStorage implements ChatStorage {
 
     @Override
     public void resetOnlineUsers() {
-        try (var connection = open();
-                var statement = connection.createStatement()) {
+        try (Connection connection = open();
+                Statement statement = connection.createStatement()) {
             statement.executeUpdate("UPDATE users SET online = FALSE");
         } catch (SQLException exception) {
             throw new StorageException("Cannot reset online users", exception);
         }
     }
 
-    private ChatMessage insertMessage(
+    private Message insertMessage(
             Connection connection, String sender, String text, Instant at) throws SQLException {
-        try (var statement =
+        try (PreparedStatement statement =
                 connection.prepareStatement(
                         "INSERT INTO messages(sender, body, created_at) VALUES (?, ?, ?)",
                         Statement.RETURN_GENERATED_KEYS)) {
@@ -306,33 +317,32 @@ public final class JdbcChatStorage implements ChatStorage {
             statement.setString(2, text);
             statement.setLong(3, at.toEpochMilli());
             statement.executeUpdate();
-            try (var keys = statement.getGeneratedKeys()) {
+            try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (!keys.next()) {
                     throw new SQLException("H2 did not return a message id");
                 }
-                return new ChatMessage(keys.getLong(1), sender, text, at);
+                return new Message(keys.getLong(1), sender, text, at);
             }
         }
     }
 
     private void insertNotifications(
             Connection connection,
-            ChatMessage message,
+            Message message,
             List<String> recipients,
             Instant at)
             throws SQLException {
-        var unique = new LinkedHashSet<String>();
-        for (var recipient : recipients) {
+        LinkedHashSet<String> unique = new LinkedHashSet<String>();
+        for (String recipient : recipients) {
             unique.add(requireName(recipient));
         }
         if (unique.isEmpty()) {
             return;
         }
-        try (var statement =
+        try (PreparedStatement statement =
                 connection.prepareStatement(
-                        "INSERT INTO notifications(recipient, message_id, created_at) "
-                                + "VALUES (?, ?, ?)")) {
-            for (var recipient : unique) {
+                        INSERT_NOTIFICATION)) {
+            for (String recipient : unique) {
                 statement.setString(1, recipient);
                 statement.setLong(2, message.id());
                 statement.setLong(3, at.toEpochMilli());
@@ -342,39 +352,38 @@ public final class JdbcChatStorage implements ChatStorage {
         }
     }
 
-    private ChatNotification insertNotification(
-            Connection connection, String recipient, ChatMessage message, Instant at)
+    private Notification insertNotification(
+            Connection connection, String recipient, Message message, Instant at)
             throws SQLException {
-        try (var statement =
+        try (PreparedStatement statement =
                 connection.prepareStatement(
-                        "INSERT INTO notifications(recipient, message_id, created_at) "
-                                + "VALUES (?, ?, ?)",
+                        INSERT_NOTIFICATION,
                         Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, recipient);
             statement.setLong(2, message.id());
             statement.setLong(3, at.toEpochMilli());
             statement.executeUpdate();
-            try (var keys = statement.getGeneratedKeys()) {
+            try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (!keys.next()) {
                     throw new SQLException("H2 did not return a notification id");
                 }
-                return new ChatNotification(keys.getLong(1), recipient, message, at);
+                return new Notification(keys.getLong(1), recipient, message, at);
             }
         }
     }
 
-    private static UserState readUser(ResultSet result) throws SQLException {
-        return new UserState(
+    private static ChatUser readUser(ResultSet result) throws SQLException {
+        return new ChatUser(
                 result.getString("name"),
                 result.getBoolean("online"),
                 result.getBoolean("notifications_enabled"),
                 Instant.ofEpochMilli(result.getLong("last_seen")));
     }
 
-    private static ChatMessage readMessage(
+    private static Message readMessage(
             ResultSet result, String id, String sender, String body, String createdAt)
             throws SQLException {
-        return new ChatMessage(
+        return new Message(
                 result.getLong(id),
                 result.getString(sender),
                 result.getString(body),

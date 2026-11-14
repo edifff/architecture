@@ -1,14 +1,22 @@
 package ru.archlabs.chat.storage;
 
+import java.time.Instant;
+import java.util.Objects;
+import java.util.function.Supplier;
+
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
 import ru.archlabs.chat.metrics.ChatMetrics;
+import ru.archlabs.proto.common.ChatMessage;
+import ru.archlabs.proto.common.ChatNotification;
 import ru.archlabs.proto.common.Empty;
+import ru.archlabs.proto.common.UserState;
 import ru.archlabs.proto.storage.AppendMessageRequest;
 import ru.archlabs.proto.storage.ConnectRequest;
 import ru.archlabs.proto.storage.EnqueueNotificationRequest;
@@ -20,10 +28,6 @@ import ru.archlabs.proto.storage.SetNotificationsRequest;
 import ru.archlabs.proto.storage.StorageServiceGrpc;
 import ru.archlabs.proto.storage.UserRequest;
 import ru.archlabs.proto.storage.UsersResponse;
-
-import java.time.Instant;
-import java.util.Objects;
-import java.util.function.Supplier;
 
 /**
  * Storage layer contract. It is the only layer that knows JDBC/H2.
@@ -49,7 +53,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     }
 
     @Override
-    public void connect(ConnectRequest request, StreamObserver<ru.archlabs.proto.common.UserState> observer) {
+    public void connect(ConnectRequest request, StreamObserver<UserState> observer) {
         unary(
                 observer,
                 "storage_connect",
@@ -60,7 +64,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     }
 
     @Override
-    public void disconnect(ConnectRequest request, StreamObserver<ru.archlabs.proto.common.UserState> observer) {
+    public void disconnect(ConnectRequest request, StreamObserver<UserState> observer) {
         unary(
                 observer,
                 "storage_disconnect",
@@ -82,7 +86,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     }
 
     @Override
-    public void findUser(UserRequest request, StreamObserver<ru.archlabs.proto.common.UserState> observer) {
+    public void findUser(UserRequest request, StreamObserver<UserState> observer) {
         unary(
                 observer,
                 "storage_find_user",
@@ -104,7 +108,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     }
 
     @Override
-    public void appendMessage(AppendMessageRequest request, StreamObserver<ru.archlabs.proto.common.ChatMessage> observer) {
+    public void appendMessage(AppendMessageRequest request, StreamObserver<ChatMessage> observer) {
         unary(
                 observer,
                 "storage_append_message",
@@ -134,7 +138,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     @Override
     public void enqueueNotification(
             EnqueueNotificationRequest request,
-            StreamObserver<ru.archlabs.proto.common.ChatNotification> observer) {
+            StreamObserver<ChatNotification> observer) {
         unary(
                 observer,
                 "storage_enqueue_notification",
@@ -171,7 +175,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
                 });
     }
 
-    private UserState requireUser(String name) {
+    private ChatUser requireUser(String name) {
         return storage.findUser(name)
                 .orElseThrow(() -> new ChatNotFoundException("Unknown user: " + name));
     }
@@ -187,7 +191,7 @@ public final class StorageGrpcService extends StorageServiceGrpc.StorageServiceI
     }
 
     private static StatusRuntimeException status(RuntimeException exception) {
-        var description = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+        String description = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
         if (exception instanceof ChatValidationException) {
             return Status.INVALID_ARGUMENT.withDescription(description).asRuntimeException();
         }

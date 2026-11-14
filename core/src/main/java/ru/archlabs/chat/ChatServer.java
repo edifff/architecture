@@ -1,10 +1,10 @@
 package ru.archlabs.chat;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.metrics.ChatMetrics;
-
 import java.util.List;
+
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
  * In-process chat façade used by lab 1 and by the local (non-gRPC) runner.
@@ -12,9 +12,9 @@ import java.util.List;
 public interface ChatServer extends AutoCloseable {
     ChatSession connect(String userName);
 
-    UserState user(String userName);
+    ChatUser user(String userName);
 
-    List<ChatMessage> history(int limit);
+    List<Message> history(int limit);
 
     ChatMetrics metrics();
 

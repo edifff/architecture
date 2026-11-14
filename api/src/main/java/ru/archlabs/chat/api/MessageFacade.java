@@ -1,8 +1,8 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.domain.ChatMessage;
-
 import java.util.List;
+
+import ru.archlabs.chat.domain.Message;
 
 public final class MessageFacade {
     private final ChatGateway gateway;
@@ -11,13 +11,13 @@ public final class MessageFacade {
         this.gateway = gateway;
     }
 
-    public ChatMessage send(String user, String body) {
-        var request = ChatJson.read(body, SendMessageRequest.class);
+    public Message send(String user, String body) {
+        SendMessageRequest request = ChatJson.read(body, SendMessageRequest.class);
         return gateway.send(
                 FacadeSupport.requireUser(user), FacadeSupport.requireText(request.text()));
     }
 
-    public List<ChatMessage> history(String user, String limit) {
+    public List<Message> history(String user, String limit) {
         return gateway.history(
                 FacadeSupport.requireUser(user), FacadeSupport.parseLimit(limit));
     }

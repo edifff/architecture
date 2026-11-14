@@ -1,23 +1,25 @@
 package ru.archlabs.chat.service;
 
-import ru.archlabs.chat.ChatServer;
-import ru.archlabs.chat.ChatSession;
-import ru.archlabs.chat.domain.ChatConflictException;
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.metrics.ChatMetrics;
-import ru.archlabs.chat.storage.ChatStorage;
-import ru.archlabs.chat.storage.InMemoryChatStorage;
-
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+
+import ru.archlabs.chat.ChatServer;
+import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.domain.ChatConflictException;
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
+import ru.archlabs.chat.storage.ChatStorage;
+import ru.archlabs.chat.storage.InMemoryChatStorage;
 
 /**
  * Coordinates the logical categories while keeping one lock around session state.
  */
 public final class ChatServerImpl implements ChatServer {
+    private static final String HISTORY_OPERATION = "history";
+
     private final Object lock = new Object();
     private final SessionRegistry sessions = new SessionRegistry();
     private final ChatMetrics metrics;
@@ -49,14 +51,14 @@ public final class ChatServerImpl implements ChatServer {
 
     @Override
     public ChatSession connect(String userName) {
-        var user = requireName(userName);
+        String user = requireName(userName);
         metrics.requestProcessed("connect");
         synchronized (lock) {
             if (sessions.contains(user)) {
                 throw new ChatConflictException("User is already connected: " + user);
             }
-            var state = users.connect(user);
-            var session = new ChatSessionImpl(this, user);
+            ChatUser state = users.connect(user);
+            ChatSessionImpl session = new ChatSessionImpl(this, user);
             sessions.add(session);
             metrics.onlineUsers(sessions.size());
             if (state.notificationsEnabled()) {
@@ -69,7 +71,7 @@ public final class ChatServerImpl implements ChatServer {
     }
 
     @Override
-    public UserState user(String userName) {
+    public ChatUser user(String userName) {
         metrics.requestProcessed("user");
         synchronized (lock) {
             return users.require(userName);
@@ -77,8 +79,8 @@ public final class ChatServerImpl implements ChatServer {
     }
 
     @Override
-    public List<ChatMessage> history(int limit) {
-        metrics.requestProcessed("history");
+    public List<Message> history(int limit) {
+        metrics.requestProcessed(HISTORY_OPERATION);
         return messages.history(limit);
     }
 
@@ -87,16 +89,16 @@ public final class ChatServerImpl implements ChatServer {
         return metrics;
     }
 
-    ChatMessage send(ChatSessionImpl session, String text) {
+    Message send(ChatSessionImpl session, String text) {
         metrics.requestProcessed("send");
-        ChatMessage message;
+        Message message;
         List<ChatSessionImpl> liveSessions;
         synchronized (lock) {
             requireActive(session);
-            var offlineRecipients =
+            List<String> offlineRecipients =
                     users.users().stream()
                             .filter(user -> !sessions.contains(user.name()))
-                            .map(UserState::name)
+                            .map(ChatUser::name)
                             .toList();
             message = messages.append(session.userName(), text, offlineRecipients);
             metrics.notificationStored(offlineRecipients.size());
@@ -106,8 +108,8 @@ public final class ChatServerImpl implements ChatServer {
         return message;
     }
 
-    List<ChatMessage> history(ChatSessionImpl session, int limit) {
-        metrics.requestProcessed("history");
+    List<Message> history(ChatSessionImpl session, int limit) {
+        metrics.requestProcessed(HISTORY_OPERATION);
         synchronized (lock) {
             requireActive(session);
             return messages.history(limit);
@@ -149,7 +151,7 @@ public final class ChatServerImpl implements ChatServer {
     @Override
     public void close() {
         synchronized (lock) {
-            for (var session : sessions.snapshot()) {
+            for (ChatSessionImpl session : sessions.snapshot()) {
                 session.close();
             }
             sessions.clear();

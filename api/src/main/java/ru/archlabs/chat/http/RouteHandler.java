@@ -1,9 +1,9 @@
 package ru.archlabs.chat.http;
 
+import java.util.regex.Matcher;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpRequest;
-
-import java.util.regex.Matcher;
 
 @FunctionalInterface
 interface RouteHandler {

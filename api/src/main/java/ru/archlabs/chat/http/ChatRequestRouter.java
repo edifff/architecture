@@ -1,15 +1,17 @@
 package ru.archlabs.chat.http;
 
+import java.util.List;
+import java.util.regex.Matcher;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
+
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.ChatException;
 import ru.archlabs.chat.domain.ChatNotFoundException;
 import ru.archlabs.chat.domain.ChatValidationException;
-
-import java.util.List;
 
 final class ChatRequestRouter {
     private final List<Route> routes;
@@ -23,9 +25,9 @@ final class ChatRequestRouter {
             ResponseWriter.error(ctx, HttpResponseStatus.BAD_REQUEST, "Malformed HTTP request");
             return;
         }
-        var path = new QueryStringDecoder(request.uri()).path();
-        for (var route : routes) {
-            var matcher = route.pattern().matcher(path);
+        String path = new QueryStringDecoder(request.uri()).path();
+        for (Route route : routes) {
+            Matcher matcher = route.pattern().matcher(path);
             if (route.method().equals(request.method().name()) && matcher.matches()) {
                 try {
                     route.handler().handle(ctx, request, matcher);

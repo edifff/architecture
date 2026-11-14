@@ -1,11 +1,5 @@
 package ru.archlabs.chat.storage;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.ChatNotification;
-import ru.archlabs.chat.domain.ChatNotFoundException;
-import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -13,15 +7,24 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+
+import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.domain.Notification;
 
 /**
  * Thread-safe RAM storage used by lab 1.
  */
 public final class InMemoryChatStorage implements ChatStorage {
-    private final Map<String, UserState> users = new ConcurrentHashMap<>();
-    private final CopyOnWriteArrayList<ChatMessage> messages = new CopyOnWriteArrayList<>();
-    private final Map<String, CopyOnWriteArrayList<ChatNotification>> notifications =
+    private static final String AT = "at";
+
+    private final Map<String, ChatUser> users = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<Message> messages = new CopyOnWriteArrayList<>();
+    private final Map<String, CopyOnWriteArrayList<Notification>> notifications =
             new ConcurrentHashMap<>();
     private final AtomicLong messageIds = new AtomicLong();
     private final AtomicLong notificationIds = new AtomicLong();
@@ -32,27 +35,27 @@ public final class InMemoryChatStorage implements ChatStorage {
 
     @Override
     public void connect(String name, Instant at) {
-        var user = requireName(name);
-        Objects.requireNonNull(at, "at");
+        String user = requireName(name);
+        Objects.requireNonNull(at, AT);
         users.compute(
                 user,
                 (ignored, previous) ->
                         previous == null
-                                ? UserState.initial(user, at)
+                                ? ChatUser.initial(user, at)
                                 : previous.withOnline(true, at));
     }
 
     @Override
     public void disconnect(String name, Instant at) {
-        var user = requireName(name);
-        Objects.requireNonNull(at, "at");
+        String user = requireName(name);
+        Objects.requireNonNull(at, AT);
         users.computeIfPresent(user, (ignored, previous) -> previous.withOnline(false, at));
     }
 
     @Override
     public void setNotificationsEnabled(String name, boolean enabled) {
-        var user = requireName(name);
-        var updated = new java.util.concurrent.atomic.AtomicBoolean();
+        String user = requireName(name);
+        AtomicBoolean updated = new AtomicBoolean();
         users.computeIfPresent(
                 user,
                 (ignored, previous) -> {
@@ -65,28 +68,28 @@ public final class InMemoryChatStorage implements ChatStorage {
     }
 
     @Override
-    public Optional<UserState> findUser(String name) {
+    public Optional<ChatUser> findUser(String name) {
         return Optional.ofNullable(users.get(requireName(name)));
     }
 
     @Override
-    public List<UserState> allUsers() {
+    public List<ChatUser> allUsers() {
         return List.copyOf(users.values());
     }
 
     @Override
-    public ChatMessage appendMessage(
+    public Message appendMessage(
             String sender, String text, List<String> notificationRecipients, Instant at) {
-        var author = requireName(sender);
-        var body = requireText(text);
+        String author = requireName(sender);
+        String body = requireText(text);
         Objects.requireNonNull(notificationRecipients, "notificationRecipients");
-        Objects.requireNonNull(at, "at");
+        Objects.requireNonNull(at, AT);
 
-        ChatMessage message;
+        Message message;
         synchronized (this) {
-            message = new ChatMessage(messageIds.incrementAndGet(), author, body, at);
+            message = new Message(messageIds.incrementAndGet(), author, body, at);
             messages.add(message);
-            for (var recipient : notificationRecipients) {
+            for (String recipient : notificationRecipients) {
                 enqueueNotification(recipient, message, at);
             }
         }
@@ -94,22 +97,22 @@ public final class InMemoryChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatMessage> history(int limit) {
+    public List<Message> history(int limit) {
         if (limit <= 0) {
             throw new ChatValidationException("History limit must be positive");
         }
-        var snapshot = List.copyOf(messages);
-        var from = Math.max(0, snapshot.size() - limit);
+        List<Message> snapshot = List.copyOf(messages);
+        int from = Math.max(0, snapshot.size() - limit);
         return List.copyOf(snapshot.subList(from, snapshot.size()));
     }
 
     @Override
-    public ChatNotification enqueueNotification(String recipient, ChatMessage message, Instant at) {
-        var target = requireName(recipient);
+    public Notification enqueueNotification(String recipient, Message message, Instant at) {
+        String target = requireName(recipient);
         Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(at, "at");
-        var notification =
-                new ChatNotification(notificationIds.incrementAndGet(), target, message, at);
+        Objects.requireNonNull(at, AT);
+        Notification notification =
+                new Notification(notificationIds.incrementAndGet(), target, message, at);
         notifications
                 .computeIfAbsent(target, ignored -> new CopyOnWriteArrayList<>())
                 .add(notification);
@@ -117,15 +120,15 @@ public final class InMemoryChatStorage implements ChatStorage {
     }
 
     @Override
-    public List<ChatNotification> pendingNotifications(String recipient) {
+    public List<Notification> pendingNotifications(String recipient) {
         return List.copyOf(
                 notifications.getOrDefault(requireName(recipient), new CopyOnWriteArrayList<>()));
     }
 
     @Override
     public void markNotificationDelivered(long notificationId, Instant at) {
-        Objects.requireNonNull(at, "at");
-        for (var queue : notifications.values()) {
+        Objects.requireNonNull(at, AT);
+        for (CopyOnWriteArrayList<Notification> queue : notifications.values()) {
             queue.removeIf(notification -> notification.id() == notificationId);
         }
     }

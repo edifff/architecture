@@ -1,17 +1,23 @@
 package ru.archlabs.chat.api;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.ClientResponseObserver;
+
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.ChatInternalException;
-import ru.archlabs.chat.domain.ChatMessage;
 import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.domain.ChatValidationException;
-import ru.archlabs.chat.domain.UserState;
+import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.ChatMetrics;
 import ru.archlabs.proto.chat.ChatServiceGrpc;
 import ru.archlabs.proto.chat.ConnectRequest;
@@ -19,10 +25,8 @@ import ru.archlabs.proto.chat.HistoryRequest;
 import ru.archlabs.proto.chat.SendMessageRequest;
 import ru.archlabs.proto.chat.SetNotificationsRequest;
 import ru.archlabs.proto.chat.UserRequest;
-
-import java.util.List;
-import java.util.Objects;
-import java.util.function.Consumer;
+import ru.archlabs.proto.common.ChatMessage;
+import ru.archlabs.proto.common.UserState;
 
 /**
  * Lab 5 gateway: the input layer talks to the domain layer over gRPC.
@@ -44,7 +48,7 @@ public final class GrpcChatGateway implements ChatGateway {
     }
 
     @Override
-    public UserState connect(String user) {
+    public ChatUser connect(String user) {
         metrics.requestProcessed("api_connect");
         try {
             return map(
@@ -65,7 +69,7 @@ public final class GrpcChatGateway implements ChatGateway {
     }
 
     @Override
-    public ChatMessage send(String user, String text) {
+    public Message send(String user, String text) {
         metrics.requestProcessed("api_send");
         try {
             return map(
@@ -80,7 +84,7 @@ public final class GrpcChatGateway implements ChatGateway {
     }
 
     @Override
-    public List<ChatMessage> history(String user, int limit) {
+    public List<Message> history(String user, int limit) {
         metrics.requestProcessed("api_history");
         try {
             return blocking.history(
@@ -109,7 +113,7 @@ public final class GrpcChatGateway implements ChatGateway {
     }
 
     @Override
-    public UserState user(String user) {
+    public ChatUser user(String user) {
         metrics.requestProcessed("api_get_user");
         try {
             return map(blocking.getUser(UserRequest.newBuilder().setName(user).build()));
@@ -119,19 +123,19 @@ public final class GrpcChatGateway implements ChatGateway {
     }
 
     @Override
-    public AutoCloseable subscribe(String user, Consumer<ChatMessage> listener) {
+    public AutoCloseable subscribe(String user, Consumer<Message> listener) {
         metrics.requestProcessed("api_subscribe");
-        var observer =
-                new ClientResponseObserver<UserRequest, ru.archlabs.proto.common.ChatMessage>() {
-                    private ClientCallStreamObserver<UserRequest> requestStream;
-
+        AtomicReference<ClientCallStreamObserver<UserRequest>>
+                requestStream = new AtomicReference<>();
+        ClientResponseObserver<UserRequest, ChatMessage> observer =
+                new ClientResponseObserver<UserRequest, ChatMessage>() {
                     @Override
-                    public void beforeStart(ClientCallStreamObserver<UserRequest> requestStream) {
-                        this.requestStream = requestStream;
+                    public void beforeStart(ClientCallStreamObserver<UserRequest> stream) {
+                        requestStream.set(stream);
                     }
 
                     @Override
-                    public void onNext(ru.archlabs.proto.common.ChatMessage value) {
+                    public void onNext(ChatMessage value) {
                         metrics.notificationDelivered("live", 1);
                         listener.accept(map(value));
                     }
@@ -143,15 +147,14 @@ public final class GrpcChatGateway implements ChatGateway {
                     @Override
                     public void onCompleted() {
                     }
-
-                    private void cancel() {
-                        if (requestStream != null) {
-                            requestStream.cancel("client closed", null);
-                        }
-                    }
                 };
         async.subscribe(UserRequest.newBuilder().setName(user).build(), observer);
-        return observer::cancel;
+        return () -> {
+            ClientCallStreamObserver<UserRequest> stream = requestStream.get();
+            if (stream != null) {
+                stream.cancel("client closed", null);
+            }
+        };
     }
 
     @Override
@@ -164,25 +167,25 @@ public final class GrpcChatGateway implements ChatGateway {
         channel.shutdownNow();
     }
 
-    private static UserState map(ru.archlabs.proto.common.UserState user) {
-        return new UserState(
+    private static ChatUser map(UserState user) {
+        return new ChatUser(
                 user.getName(),
                 user.getOnline(),
                 user.getNotificationsEnabled(),
-                java.time.Instant.ofEpochMilli(user.getLastSeenEpochMillis()));
+                Instant.ofEpochMilli(user.getLastSeenEpochMillis()));
     }
 
-    private static ChatMessage map(ru.archlabs.proto.common.ChatMessage message) {
-        return new ChatMessage(
+    private static Message map(ChatMessage message) {
+        return new Message(
                 message.getId(),
                 message.getSender(),
                 message.getText(),
-                java.time.Instant.ofEpochMilli(message.getCreatedAtEpochMillis()));
+                Instant.ofEpochMilli(message.getCreatedAtEpochMillis()));
     }
 
     private static RuntimeException map(StatusRuntimeException exception) {
-        var description = exception.getStatus().getDescription();
-        var message = description == null ? exception.getStatus().getCode().name() : description;
+        String description = exception.getStatus().getDescription();
+        String message = description == null ? exception.getStatus().getCode().name() : description;
         return switch (exception.getStatus().getCode()) {
             case INVALID_ARGUMENT -> new ChatValidationException(message);
             case NOT_FOUND -> new ChatNotFoundException(message);

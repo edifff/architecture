@@ -1,6 +1,6 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.domain.UserState;
+import ru.archlabs.chat.domain.ChatUser;
 
 public final class SessionFacade {
     private final ChatGateway gateway;
@@ -9,7 +9,7 @@ public final class SessionFacade {
         this.gateway = gateway;
     }
 
-    public UserState connect(String user) {
+    public ChatUser connect(String user) {
         return gateway.connect(FacadeSupport.requireUser(user));
     }
 

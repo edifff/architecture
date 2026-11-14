@@ -1,20 +1,19 @@
 package ru.archlabs.chat;
 
+import java.nio.file.Path;
+
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.service.ChatServerImpl;
 import ru.archlabs.chat.storage.JdbcChatStorage;
 
-import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class PersistentChatServerTest extends ChatServerContractTest {
     @TempDir
-    Path tempDir;
+    private Path tempDir;
 
     private ChatServer server;
 
@@ -43,41 +42,41 @@ final class PersistentChatServerTest extends ChatServerContractTest {
 
     @Test
     void normalRestartKeepsStateAndBufferedNotifications() throws Exception {
-        var first = new ChatServerImpl(new JdbcChatStorage(url()));
-        var alice = first.connect("alice");
+        ChatServerImpl first = new ChatServerImpl(new JdbcChatStorage(url()));
+        ChatSession alice = first.connect("alice");
         alice.setNotificationsEnabled(false);
         alice.close();
         first.connect("bob").send("persisted while disabled");
         first.close();
 
-        try (var second = new ChatServerImpl(new JdbcChatStorage(url()))) {
-            var state = second.user("alice");
-            assertFalse(state.online());
-            assertFalse(state.notificationsEnabled());
-            assertEquals(1, second.history(10).size());
+        try (ChatServerImpl second = new ChatServerImpl(new JdbcChatStorage(url()))) {
+            ChatUser state = second.user("alice");
+            Assertions.assertFalse(state.online());
+            Assertions.assertFalse(state.notificationsEnabled());
+            Assertions.assertEquals(1, second.history(10).size());
 
-            var inbox = new Inbox();
-            var reconnected = second.connect("alice");
+            ChatServerContractTest.Inbox inbox = new Inbox();
+            ChatSession reconnected = second.connect("alice");
             reconnected.addListener(inbox::accept);
-            assertNull(inbox.poll());
+            Assertions.assertNull(inbox.poll());
 
             reconnected.setNotificationsEnabled(true);
-            assertNotNull(inbox.await());
+            Assertions.assertNotNull(inbox.await());
         }
     }
 
     @Test
     void crashRestartMarksUsersOfflineAndKeepsNotificationsPending() throws Exception {
-        var first = new ChatServerImpl(new JdbcChatStorage(url()));
+        ChatServerImpl first = new ChatServerImpl(new JdbcChatStorage(url()));
         first.connect("alice").close();
         first.connect("bob").send("sent before crash");
 
-        try (var second = new ChatServerImpl(new JdbcChatStorage(url()))) {
-            assertFalse(second.user("alice").online());
+        try (ChatServerImpl second = new ChatServerImpl(new JdbcChatStorage(url()))) {
+            Assertions.assertFalse(second.user("alice").online());
 
-            var inbox = new Inbox();
+            ChatServerContractTest.Inbox inbox = new Inbox();
             second.connect("alice").addListener(inbox::accept);
-            assertNotNull(inbox.await());
+            Assertions.assertNotNull(inbox.await());
         } finally {
             first.close();
         }

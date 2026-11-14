@@ -25,7 +25,7 @@ final class FacadeSupport {
             return 50;
         }
         try {
-            var limit = Integer.parseInt(value);
+            int limit = Integer.parseInt(value);
             if (limit <= 0) {
                 throw new ChatValidationException("History limit must be positive");
             }

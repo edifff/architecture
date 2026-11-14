@@ -13,14 +13,14 @@ public final class ChatApplication {
     }
 
     public static void main(String[] args) throws Exception {
-        var chatHost = System.getenv().getOrDefault("CHAT_HOST", "localhost");
-        var chatPort = intEnv("CHAT_PORT", 9091);
-        var httpPort = intEnv("ARCHLABS_HTTP_PORT", 8080);
-        var metricsPort = intEnv("ARCHLABS_METRICS_PORT", 9100);
+        String chatHost = System.getenv().getOrDefault("CHAT_HOST", "localhost");
+        int chatPort = intEnv("CHAT_PORT", 9091);
+        int httpPort = intEnv("ARCHLABS_HTTP_PORT", 8080);
+        int metricsPort = intEnv("ARCHLABS_METRICS_PORT", 9100);
 
-        var gateway = new GrpcChatGateway(chatHost, chatPort);
-        var http = new ChatHttpServer(ChatFacades.over(gateway), httpPort);
-        var metrics = new MetricsHttpServer(gateway.metrics(), metricsPort);
+        GrpcChatGateway gateway = new GrpcChatGateway(chatHost, chatPort);
+        ChatHttpServer http = new ChatHttpServer(ChatFacades.over(gateway), httpPort);
+        MetricsHttpServer metrics = new MetricsHttpServer(gateway.metrics(), metricsPort);
         http.start();
         metrics.start();
         Runtime.getRuntime()
@@ -39,7 +39,7 @@ public final class ChatApplication {
     }
 
     private static int intEnv(String name, int fallback) {
-        var value = System.getenv(name);
+        String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : Integer.parseInt(value);
     }
 }

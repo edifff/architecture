@@ -1,25 +1,45 @@
 package ru.archlabs.chat.api;
 
-import ru.archlabs.chat.domain.ChatMessage;
-import ru.archlabs.chat.domain.UserState;
-import ru.archlabs.chat.metrics.ChatMetrics;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.function.Consumer;
 
+import ru.archlabs.chat.domain.ChatUser;
+import ru.archlabs.chat.domain.Message;
+import ru.archlabs.chat.metrics.ChatMetrics;
+
 final class FakeChatGateway implements ChatGateway {
-    String lastUser;
-    String lastText;
-    boolean lastEnabled;
-    int lastLimit;
-    Consumer<ChatMessage> lastListener;
-    UserState lastState;
+    private String lastUser;
+    private String lastText;
+    private boolean lastEnabled;
+    private int lastLimit;
+    private Consumer<Message> lastListener;
+    private ChatUser lastState;
+
+    String lastUser() {
+        return lastUser;
+    }
+
+    String lastText() {
+        return lastText;
+    }
+
+    boolean lastEnabled() {
+        return lastEnabled;
+    }
+
+    int lastLimit() {
+        return lastLimit;
+    }
+
+    Consumer<Message> lastListener() {
+        return lastListener;
+    }
 
     @Override
-    public UserState connect(String user) {
+    public ChatUser connect(String user) {
         lastUser = user;
-        lastState = new UserState(user, true, true, Instant.EPOCH);
+        lastState = new ChatUser(user, true, true, Instant.EPOCH);
         return lastState;
     }
 
@@ -29,17 +49,17 @@ final class FakeChatGateway implements ChatGateway {
     }
 
     @Override
-    public ChatMessage send(String user, String text) {
+    public Message send(String user, String text) {
         lastUser = user;
         lastText = text;
-        return new ChatMessage(1, user, text, Instant.EPOCH);
+        return new Message(1, user, text, Instant.EPOCH);
     }
 
     @Override
-    public List<ChatMessage> history(String user, int limit) {
+    public List<Message> history(String user, int limit) {
         lastUser = user;
         lastLimit = limit;
-        return List.of(new ChatMessage(1, user, "hello", Instant.EPOCH));
+        return List.of(new Message(1, user, "hello", Instant.EPOCH));
     }
 
     @Override
@@ -49,13 +69,13 @@ final class FakeChatGateway implements ChatGateway {
     }
 
     @Override
-    public UserState user(String user) {
+    public ChatUser user(String user) {
         lastUser = user;
-        return new UserState(user, true, true, Instant.EPOCH);
+        return new ChatUser(user, true, true, Instant.EPOCH);
     }
 
     @Override
-    public AutoCloseable subscribe(String user, Consumer<ChatMessage> listener) {
+    public AutoCloseable subscribe(String user, Consumer<Message> listener) {
         lastUser = user;
         lastListener = listener;
         return () -> {

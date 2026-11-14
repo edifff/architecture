@@ -1,13 +1,15 @@
 package ru.archlabs.chat.metrics;
 
-import com.sun.net.httpserver.HttpServer;
-import io.prometheus.client.exporter.common.TextFormat;
-
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+
+import com.sun.net.httpserver.HttpServer;
+
+import io.prometheus.client.exporter.common.TextFormat;
 
 /**
  * Minimal Prometheus exposition endpoint over the JDK HTTP server.
@@ -21,7 +23,7 @@ public final class MetricsHttpServer implements AutoCloseable {
         server.createContext(
                 "/metrics",
                 exchange -> {
-                    var writer = new StringWriter();
+                    StringWriter writer = new StringWriter();
                     try {
                         TextFormat.write004(writer, metrics.registry().metricFamilySamples());
                     } catch (IOException exception) {
@@ -29,11 +31,11 @@ public final class MetricsHttpServer implements AutoCloseable {
                         exchange.close();
                         return;
                     }
-                    var body = writer.toString().getBytes(StandardCharsets.UTF_8);
+                    byte[] body = writer.toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders()
                             .add("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
                     exchange.sendResponseHeaders(200, body.length);
-                    try (var output = exchange.getResponseBody()) {
+                    try (OutputStream output = exchange.getResponseBody()) {
                         output.write(body);
                     }
                 });

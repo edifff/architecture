@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,10 +21,10 @@ public final class HttpLoadClient {
     }
 
     public static void main(String[] args) throws Exception {
-        var base = "http://localhost:8080";
-        var users = 10;
-        var messages = 20;
-        for (var i = 0; i < args.length; i++) {
+        String base = "http://localhost:8080";
+        int users = 10;
+        int messages = 20;
+        for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--base" -> base = args[++i];
                 case "--users" -> users = Integer.parseInt(args[++i]);
@@ -32,31 +33,31 @@ public final class HttpLoadClient {
             }
         }
 
-        var client =
+        HttpClient client =
                 HttpClient.newBuilder()
                         .version(HttpClient.Version.HTTP_1_1)
                         .connectTimeout(Duration.ofSeconds(5))
                         .build();
-        var run = Long.toHexString(System.nanoTime());
-        var names = new ArrayList<String>();
-        for (var i = 0; i < users; i++) {
+        String run = Long.toHexString(System.nanoTime());
+        ArrayList<String> names = new ArrayList<String>();
+        for (int i = 0; i < users; i++) {
             names.add("load-" + run + "-" + i);
         }
-        for (var name : names) {
+        for (String name : names) {
             post(client, base + "/sessions/" + name, "");
         }
 
-        var errors = new AtomicInteger();
-        var started = System.nanoTime();
-        var endpoint = base;
-        var perUser = messages;
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (var name : names) {
+        AtomicInteger errors = new AtomicInteger();
+        long started = System.nanoTime();
+        String endpoint = base;
+        int perUser = messages;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (String name : names) {
                 executor.submit(
                         () -> {
                             try {
-                                for (var i = 0; i < perUser; i++) {
-                                    var response =
+                                for (int i = 0; i < perUser; i++) {
+                                    HttpResponse<String> response =
                                             post(
                                                     client,
                                                     endpoint + "/messages/" + name,
@@ -71,14 +72,14 @@ public final class HttpLoadClient {
                         });
             }
         }
-        var elapsed = System.nanoTime() - started;
-        var total = users * messages;
-        var seconds = elapsed / 1_000_000_000.0;
+        long elapsed = System.nanoTime() - started;
+        int total = users * messages;
+        double seconds = elapsed / 1_000_000_000.0;
         System.out.printf(
                 "users=%d messages=%d total=%d duration_ms=%d rps=%.1f errors=%d%n",
                 users, messages, total, elapsed / 1_000_000, total / seconds, errors.get());
 
-        for (var name : names) {
+        for (String name : names) {
             delete(client, base + "/sessions/" + name);
         }
     }

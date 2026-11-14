@@ -1,25 +1,23 @@
 package ru.archlabs.chat.api;
 
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import ru.archlabs.chat.chat.ChatGrpcService;
-import ru.archlabs.chat.domain.ChatMessage;
 import ru.archlabs.chat.domain.ChatNotFoundException;
+import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.service.ChatServerImpl;
 
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class GrpcChatGatewayTest {
     private ChatServerImpl domain;
@@ -29,7 +27,7 @@ final class GrpcChatGatewayTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        var name = InProcessServerBuilder.generateName();
+        String name = InProcessServerBuilder.generateName();
         domain = new ChatServerImpl();
         server =
                 InProcessServerBuilder.forName(name)
@@ -50,36 +48,36 @@ final class GrpcChatGatewayTest {
 
     @Test
     void mapsTheChatContractToDomainRecords() {
-        assertTrue(gateway.connect("alice").online());
+        Assertions.assertTrue(gateway.connect("alice").online());
 
-        var message = gateway.send("alice", "hello");
-        assertEquals("hello", message.text());
-        assertEquals(1, gateway.history("alice", 10).size());
+        Message message = gateway.send("alice", "hello");
+        Assertions.assertEquals("hello", message.text());
+        Assertions.assertEquals(1, gateway.history("alice", 10).size());
 
         gateway.setNotificationsEnabled("alice", false);
-        assertFalse(gateway.user("alice").notificationsEnabled());
+        Assertions.assertFalse(gateway.user("alice").notificationsEnabled());
 
         gateway.disconnect("alice");
-        assertFalse(gateway.user("alice").online());
+        Assertions.assertFalse(gateway.user("alice").online());
     }
 
     @Test
     void mapsGrpcNotFoundToDomainException() {
-        assertThrows(ChatNotFoundException.class, () -> gateway.user("ghost"));
+        Assertions.assertThrows(ChatNotFoundException.class, () -> gateway.user("ghost"));
     }
 
     @Test
     void subscribesToLiveMessages() throws Exception {
         gateway.connect("alice");
         gateway.connect("bob");
-        var inbox = new LinkedBlockingQueue<ChatMessage>();
+        LinkedBlockingQueue<Message> inbox = new LinkedBlockingQueue<Message>();
 
-        var subscription = gateway.subscribe("alice", inbox::add);
+        AutoCloseable subscription = gateway.subscribe("alice", inbox::add);
         gateway.send("bob", "live");
 
-        var message = inbox.poll(5, TimeUnit.SECONDS);
-        assertNotNull(message);
-        assertEquals("live", message.text());
+        Message message = inbox.poll(5, TimeUnit.SECONDS);
+        Assertions.assertNotNull(message);
+        Assertions.assertEquals("live", message.text());
         subscription.close();
     }
 }
