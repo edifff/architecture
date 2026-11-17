@@ -26,7 +26,8 @@ durable. Each row sends 20 messages per user; the reported duration covers sends
 | 10 | 200 | 12.990 s | 15.4 req/s | 0 |
 | 50 | 1000 | 42.677 s | 23.4 req/s | 0 |
 
-For comparison, the same 10-user/200-message run against the single-process app
+These numbers describe the lab 5 single-shard stack. For comparison, the same
+10-user/200-message run against the single-process app
 (`arch-labs-app`, H2 on a host path) took 13.792 s after warm-up, or 14.5 req/s. The
 gRPC hops did not dominate at this load: the durable H2 commit is the bottleneck.
 
@@ -47,4 +48,24 @@ gRPC hops did not dominate at this load: the durable H2 commit is the bottleneck
   `archlabs_requests_total` and `archlabs_notifications_total`.
 
 Prometheus scrapes all layers at `http://localhost:9090`; the individual metric
-endpoints are api `:9100`, chat `:9101`, and storage `:9102`.
+endpoints are api `:9100`, chat shards `:9101`–`:9103`, and storage shards
+`:9111`–`:9113`.
+
+## Sharded comparison
+
+Lab 6 replaces the single chat/storage pair with three identical shard stacks. The
+input container routes each user with `FNV-1a(user) mod 3` and fans a normal send out to
+the other two shards, so the send path now performs one storage commit on the sender's
+shard and two notification-only `Deliver` calls. Measure the same workload against the
+sharded stack with:
+
+```shell
+docker compose up -d --build
+perf/load.sh 10 20
+perf/load.sh 50 20
+```
+
+The per-shard metrics show that three writers now commit in parallel instead of one H2
+writer serializing all users. The api fan-out and the synchronous gather are the new
+costs on top of the request; they are visible as `api_send`, `api_deliver`, and
+`api_status` counters on the api endpoint.

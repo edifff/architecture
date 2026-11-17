@@ -1,5 +1,6 @@
 package ru.archlabs.chat.chat;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,15 +13,22 @@ import io.grpc.stub.StreamObserver;
 
 import ru.archlabs.chat.ChatServer;
 import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.DeliverySummary;
+import ru.archlabs.chat.StatusDispatch;
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.ChatNotFoundException;
 import ru.archlabs.chat.domain.ChatValidationException;
+import ru.archlabs.chat.domain.Message;
 import ru.archlabs.proto.chat.ChatServiceGrpc;
 import ru.archlabs.proto.chat.ConnectRequest;
+import ru.archlabs.proto.chat.DeliverRequest;
+import ru.archlabs.proto.chat.DeliveryReport;
 import ru.archlabs.proto.chat.HistoryRequest;
 import ru.archlabs.proto.chat.HistoryResponse;
+import ru.archlabs.proto.chat.LocalHistoryRequest;
 import ru.archlabs.proto.chat.SendMessageRequest;
 import ru.archlabs.proto.chat.SetNotificationsRequest;
+import ru.archlabs.proto.chat.StatusSendResponse;
 import ru.archlabs.proto.chat.UserRequest;
 import ru.archlabs.proto.common.ChatMessage;
 import ru.archlabs.proto.common.Empty;
@@ -33,10 +41,16 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     private static final String NOT_CONNECTED = "User is not connected: ";
 
     private final ChatServer server;
+    private final String shardId;
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
 
     public ChatGrpcService(ChatServer server) {
+        this(server, "local");
+    }
+
+    public ChatGrpcService(ChatServer server, String shardId) {
         this.server = Objects.requireNonNull(server, "server");
+        this.shardId = Objects.requireNonNull(shardId, "shardId");
     }
 
     @Override
@@ -74,18 +88,37 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
     }
 
     @Override
+    public void deliver(DeliverRequest request, StreamObserver<DeliveryReport> observer) {
+        unary(
+                observer,
+                () -> report(server.deliver(ChatProtoMapper.fromProto(request.getMessage()))));
+    }
+
+    @Override
+    public void sendStatus(SendMessageRequest request, StreamObserver<StatusSendResponse> observer) {
+        unary(
+                observer,
+                () -> {
+                    StatusDispatch dispatch =
+                            requireSession(request.getName()).broadcastStatus(request.getText());
+                    return StatusSendResponse.newBuilder()
+                            .setMessage(ChatProtoMapper.toProto(dispatch.message()))
+                            .setDelivery(report(dispatch.summary()))
+                            .build();
+                });
+    }
+
+    @Override
     public void history(HistoryRequest request, StreamObserver<HistoryResponse> observer) {
         unary(
                 observer,
-                () ->
-                        HistoryResponse.newBuilder()
-                                .addAllMessages(
-                                        requireSession(request.getName())
-                                                .history(request.getLimit())
-                                                .stream()
-                                                .map(ChatProtoMapper::toProto)
-                                                .toList())
-                                .build());
+                () -> history(requireSession(request.getName()).history(request.getLimit())));
+    }
+
+    @Override
+    public void localHistory(
+            LocalHistoryRequest request, StreamObserver<HistoryResponse> observer) {
+        unary(observer, () -> history(server.history(request.getLimit())));
     }
 
     @Override
@@ -120,6 +153,21 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
         } catch (RuntimeException exception) {
             responseObserver.onError(status(exception));
         }
+    }
+
+    private static HistoryResponse history(List<Message> messages) {
+        return HistoryResponse.newBuilder()
+                .addAllMessages(messages.stream().map(ChatProtoMapper::toProto).toList())
+                .build();
+    }
+
+    private DeliveryReport report(DeliverySummary summary) {
+        return DeliveryReport.newBuilder()
+                .setShard(shardId)
+                .setChats(summary.chats())
+                .setDelivered(summary.delivered())
+                .setQueued(summary.queued())
+                .build();
     }
 
     private ChatSession requireSession(String name) {

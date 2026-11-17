@@ -63,7 +63,15 @@ public final class ChatHttpServer implements AutoCloseable {
                                         HttpMethod.GET.name(),
                                         Pattern.compile("^/events/(?<user>[^/]+)$"),
                                         new EventsHandler(
-                                                facades.notifications(), facades.users()))));
+                                                facades.notifications(), facades.users())),
+                                new Route(
+                                        HttpMethod.POST.name(),
+                                        Pattern.compile("^/status/(?<user>[^/]+)$"),
+                                        new StatusHandler(facades.status())),
+                                new Route(
+                                        HttpMethod.GET.name(),
+                                        Pattern.compile("^/shards/(?<user>[^/]+)$"),
+                                        new ShardHandler(facades.shards()))));
         bootstrap =
                 new ServerBootstrap()
                         .group(bossGroup, workerGroup)

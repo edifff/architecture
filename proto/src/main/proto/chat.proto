@@ -12,7 +12,10 @@ service ChatService {
   rpc Connect(ConnectRequest) returns (archlabs.common.UserState);
   rpc Disconnect(UserRequest) returns (archlabs.common.Empty);
   rpc Send(SendMessageRequest) returns (archlabs.common.ChatMessage);
+  rpc Deliver(DeliverRequest) returns (DeliveryReport);
+  rpc SendStatus(SendMessageRequest) returns (StatusSendResponse);
   rpc History(HistoryRequest) returns (HistoryResponse);
+  rpc LocalHistory(LocalHistoryRequest) returns (HistoryResponse);
   rpc SetNotifications(SetNotificationsRequest) returns (archlabs.common.Empty);
   rpc GetUser(UserRequest) returns (archlabs.common.UserState);
   rpc Subscribe(UserRequest) returns (stream archlabs.common.ChatMessage);
@@ -40,7 +43,27 @@ message HistoryResponse {
   repeated archlabs.common.ChatMessage messages = 1;
 }
 
+message LocalHistoryRequest {
+  int32 limit = 1;
+}
+
 message SetNotificationsRequest {
   string name = 1;
   bool enabled = 2;
+}
+
+message DeliverRequest {
+  archlabs.common.ChatMessage message = 1;
+}
+
+message DeliveryReport {
+  string shard = 1;
+  int32 chats = 2;
+  int32 delivered = 3;
+  int32 queued = 4;
+}
+
+message StatusSendResponse {
+  archlabs.common.ChatMessage message = 1;
+  DeliveryReport delivery = 2;
 }

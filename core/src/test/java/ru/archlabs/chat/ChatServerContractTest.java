@@ -1,5 +1,6 @@
 package ru.archlabs.chat;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -130,6 +131,41 @@ abstract class ChatServerContractTest {
 
         reconnected.setNotificationsEnabled(true);
         Assertions.assertNotNull(inbox.await());
+    }
+
+    @Test
+    void statusMessageReachesEveryChatAndReportsCounters() throws Exception {
+        ChatServerContractTest.Inbox aliceInbox = new ChatServerContractTest.Inbox();
+        ChatServerContractTest.Inbox bobInbox = new ChatServerContractTest.Inbox();
+        ChatSession alice = server().connect("alice");
+        alice.addListener(aliceInbox::accept);
+        ChatSession bob = server().connect("bob");
+        bob.addListener(bobInbox::accept);
+
+        StatusDispatch dispatch = alice.broadcastStatus("maintenance at 22:00");
+
+        Assertions.assertEquals("maintenance at 22:00", dispatch.message().text());
+        Assertions.assertEquals(2, dispatch.summary().chats());
+        Assertions.assertEquals(2, dispatch.summary().delivered());
+        Assertions.assertEquals(0, dispatch.summary().queued());
+        Assertions.assertEquals("maintenance at 22:00", aliceInbox.await().text());
+        Assertions.assertEquals("maintenance at 22:00", bobInbox.await().text());
+    }
+
+    @Test
+    void messageFromAnotherShardIsQueuedForOfflineUsers() throws Exception {
+        server().connect("alice").close();
+        Message message = new Message(99, "remote", "cross-shard", Instant.EPOCH);
+
+        DeliverySummary summary = server().deliver(message);
+
+        Assertions.assertEquals(1, summary.chats());
+        Assertions.assertEquals(0, summary.delivered());
+        Assertions.assertEquals(1, summary.queued());
+
+        ChatServerContractTest.Inbox inbox = new ChatServerContractTest.Inbox();
+        server().connect("alice").addListener(inbox::accept);
+        Assertions.assertEquals("cross-shard", inbox.await().text());
     }
 
     @Test

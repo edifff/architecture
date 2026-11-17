@@ -11,6 +11,7 @@ import ru.archlabs.chat.metrics.ChatMetrics;
 final class FakeChatGateway implements ChatGateway {
     private String lastUser;
     private String lastText;
+    private String lastStatusText;
     private boolean lastEnabled;
     private int lastLimit;
     private Consumer<Message> lastListener;
@@ -22,6 +23,10 @@ final class FakeChatGateway implements ChatGateway {
 
     String lastText() {
         return lastText;
+    }
+
+    String lastStatusText() {
+        return lastStatusText;
     }
 
     boolean lastEnabled() {
@@ -80,6 +85,26 @@ final class FakeChatGateway implements ChatGateway {
         lastListener = listener;
         return () -> {
         };
+    }
+
+    @Override
+    public StatusReport broadcastStatus(String user, String text) {
+        lastUser = user;
+        lastStatusText = text;
+        return new StatusReport(
+                user,
+                new Message(1, user, text, Instant.EPOCH),
+                1,
+                1,
+                1,
+                0,
+                List.of(new ShardReport("local", 1, 1, 0)));
+    }
+
+    @Override
+    public ShardAssignment shardAssignment(String user) {
+        lastUser = user;
+        return new ShardAssignment(user, "local", 1);
     }
 
     @Override

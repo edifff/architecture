@@ -1,7 +1,9 @@
 # Arch Labs: Chat System
 
-This repository is a step-by-step implementation of the five architecture labs. The
+This repository is a step-by-step implementation of the six architecture labs. The
 chat option was selected for lab 1, and Netty was selected for the IP interface in lab 3.
+Lab 6 shards the layered system into identical chat and storage containers, with the
+input container acting as the deterministic router and scatter-gather aggregator.
 
 ## Code style
 
@@ -125,6 +127,8 @@ keep one HTTP connection open for the event stream.
 | `GET` | `/messages/{user}?limit=50` | — | `200` + message array |
 | `PUT` | `/notifications/{user}` | `{"enabled":true}` | `204` |
 | `GET` | `/events/{user}` | — | `200` + `text/event-stream` |
+| `POST` | `/status/{user}` | `{"text":"..."}` | `200` + aggregated status report (lab 6) |
+| `GET` | `/shards/{user}` | — | `200` + deterministic shard assignment (lab 6) |
 
 The event stream sends:
 
@@ -199,8 +203,8 @@ docker compose --profile test run --rm tests
 ```
 
 The separate test container runs the full reactor with no Docker-in-Docker dependency
-because the storage tests use embedded H2. The Docker test run was verified to pass all
-66 tests.
+because the storage tests use embedded H2. The Docker test run was verified to pass the
+full suite (93 tests after lab 6).
 
 ### Persistence check
 
@@ -215,7 +219,8 @@ curl 'http://localhost:8081/messages/alice?limit=10'
 
 ## Lab 5: layered containers and protobuf
 
-The final system is split into three containers with explicit contracts:
+The lab 5 system is split into three containers with explicit contracts. Lab 6 keeps
+these layers and shards the chat and storage layers horizontally:
 
 ```text
 api (Netty HTTP/SSE + Facades) --gRPC chat.proto--> chat (domain)
@@ -249,20 +254,21 @@ notifications, and users. A facade parses JSON, validates it, and converts it in
 internal command represented by `ChatGateway`. In the layered deployment
 `GrpcChatGateway` converts that internal call into a protobuf request.
 
-### Run lab 5
+### Run lab 5 (single-shard profile)
+
+Lab 5 is kept as the `single` profile for comparison with the sharded stack:
 
 ```shell
-docker compose up -d --build
-docker compose ps
-curl -X POST http://localhost:8080/sessions/alice
-curl -X POST http://localhost:8080/sessions/bob
-curl -X POST http://localhost:8080/messages/bob \
+docker compose --profile single up -d --build storage-single chat-single api-single
+curl -X POST http://localhost:8085/sessions/alice
+curl -X POST http://localhost:8085/sessions/bob
+curl -X POST http://localhost:8085/messages/bob \
   -H 'Content-Type: application/json' -d '{"text":"through three layers"}'
-curl -N http://localhost:8080/events/alice
+curl -N http://localhost:8085/events/alice
 ```
 
-Services: api `8080`, chat gRPC `9091`, storage gRPC `9092`, Prometheus `9090`.
-Metrics: api `9100`, chat `9101`, storage `9102`.
+Services: api `8085`, chat gRPC `9089`, storage gRPC `9190`, Prometheus `9090`.
+Metrics: api `9105`, chat `9109`, storage `9114`.
 
 ### Tests per layer
 
@@ -274,6 +280,170 @@ Metrics: api `9100`, chat `9101`, storage `9102`.
 | Storage gRPC | `StorageGrpcServiceTest` | storage contract over gRPC |
 | Chat gRPC | `ChatGrpcServiceTest` | domain contract and live stream over gRPC |
 | API | `FacadesTest`, `ChatHttpServerTest`, `GrpcChatGatewayTest` | input parsing, Netty HTTP/SSE, gRPC gateway |
+
+## Lab 6: sharding by user
+
+The layered system is split into three identical shard stacks. The three chat shards
+share one image, the three storage shards share another, and each stack owns a different
+subset of the users and their chats:
+
+```text
+                         ┌──────────────────────────── api (input) ──────────────────────────┐
+HTTP/SSE clients ───────►│ ShardRouter: FNV-1a(user) mod 3                                    │
+                         │ per-user calls ──► one shard        general calls ──► all shards   │
+                         └───────┬───────────────────┬───────────────────┬───────────────────┘
+                                 │ gRPC              │ gRPC              │ gRPC
+                           chat-1│             chat-2│             chat-3│
+                                 │ gRPC              │ gRPC              │ gRPC
+                         storage-1            storage-2            storage-3
+                                 │ JDBC              │ JDBC              │ JDBC
+                          H2 volume 1          H2 volume 2          H2 volume 3
+```
+
+The user is the business entity key. The same deterministic function is used by every
+input container, so a user always lands on the same chat and storage pair:
+
+```java
+shardIndex = fnv1a64(user.strip()) % shardCount
+```
+
+FNV-1a is used instead of `String.hashCode()` so the mapping is stable across JVM
+versions, container restarts, and replicas. `GET /shards/{user}` exposes the assignment.
+The shard list must be identical and in the same order on every api replica. Each entry
+is `host:port`, or `id@host:port` when the report id should differ from the host:
+`CHAT_SHARDS=chat-1@chat-1:9091,chat-2@chat-2:9091,chat-3@chat-3:9091`.
+
+### How a request flows
+
+| Request | Input element behaviour |
+| --- | --- |
+| session, user, notification preference, subscription | one sub-request to `shard(user)` |
+| send a message | store and deliver on `shard(sender)`, then fan out `Deliver` to the other shards |
+| history | validate the session on `shard(user)`, fetch `LocalHistory` from every shard, merge and trim by time |
+| status to all chats | one `SendStatus` plus `Deliver` on every other shard, then aggregate the reports |
+
+The input container waits for all parallel gRPC calls with `CompletableFuture.join()`
+before it writes the HTTP response. That is the synchronous gather required by the lab;
+the fan-out runs on virtual threads. A request either returns a complete aggregate or a
+mapped error, so the caller never sees a half-built response.
+
+### General operation: status for every chat
+
+`POST /status/{user}` sends a status message from the user to every chat in the system.
+The chat option models one shared room, so every user's chat is a view of the same
+conversation and the set of chats related to the user is the set of all user chats. This
+is exactly the operation that cannot be served by one shard, so it exercises the whole
+pattern: the input element splits it into one sub-request per shard, every shard applies
+it to the chats it owns and reports counters, and the input element combines the
+per-shard counters into one response.
+
+```shell
+curl -X POST http://localhost:8080/status/alice \
+  -H 'Content-Type: application/json' -d '{"text":"maintenance at 22:00"}'
+```
+
+```json
+{
+  "sender": "alice",
+  "message": {"id": 7, "sender": "alice", "text": "maintenance at 22:00", "createdAt": "..."},
+  "shardCount": 3,
+  "chats": 4,
+  "delivered": 2,
+  "queued": 2,
+  "shards": [
+    {"shard": "chat-3", "chats": 1, "delivered": 1, "queued": 0},
+    {"shard": "chat-1", "chats": 2, "delivered": 1, "queued": 1},
+    {"shard": "chat-2", "chats": 1, "delivered": 0, "queued": 1}
+  ]
+}
+```
+
+`chats` is the number of user chats owned by each shard, `delivered` counts live
+sessions with notifications enabled, and `queued` counts offline users whose pending
+notifications were stored. The message itself is stored once, on the sender's shard;
+other shards keep self-contained notification rows, so cross-shard delivery does not
+need a foreign key to a message owned by another shard.
+
+### Storage shard details
+
+- Each storage container has its own H2 file in its own named volume.
+- Identities are offset per shard: shard `i` starts at `i + 1` and increments by
+  `shardCount`, so message ids stay unique after histories are merged.
+- Notifications copy the message fields (`sender`, `body`, `message_created_at`).
+  A notification can therefore reference a message that lives on a different shard.
+- `StorageMain` reads `SHARD_INDEX`, `SHARD_COUNT`, and `SHARD_ID`; the chat container
+  reads `SHARD_ID` for its delivery reports.
+
+### Run lab 6
+
+```shell
+docker compose up -d --build
+docker compose ps
+```
+
+Services: api `8080`, Prometheus `9090`. Chat shards are published on gRPC
+`9091`–`9093` and metrics `9101`–`9103`; storage shards on gRPC `9191`–`9193` and
+metrics `9111`–`9113`.
+
+```shell
+for user in alice bob carol dave; do
+  curl -s -X POST "http://localhost:8080/sessions/$user" >/dev/null
+done
+curl -s http://localhost:8080/shards/alice
+curl -s http://localhost:8080/shards/bob
+curl -s -X POST http://localhost:8080/messages/bob \
+  -H 'Content-Type: application/json' -d '{"text":"across shards"}'
+curl -s 'http://localhost:8080/messages/alice?limit=10'
+curl -s -X POST http://localhost:8080/status/alice \
+  -H 'Content-Type: application/json' -d '{"text":"maintenance at 22:00"}'
+```
+
+The first two `shards` calls show different shard names. The history request proves the
+input layer merged messages written to different shards. The status response shows a
+non-zero `chats` count on every shard that owns at least one user.
+
+Persistence check for one shard:
+
+```shell
+curl -s http://localhost:8080/shards/alice       # for example chat-3 / storage-3
+docker compose restart chat-3 storage-3
+curl -s -X POST http://localhost:8080/sessions/alice
+curl -s 'http://localhost:8080/messages/alice?limit=10'
+```
+
+### Lab 6 tests
+
+| Test | What it proves |
+| --- | --- |
+| `ShardRouterTest` | stable FNV-1a assignments and balanced distribution |
+| `ShardedChatGatewayTest` | three in-process shards: routing, cross-shard live delivery, offline queueing, merged history, aggregated status |
+| `InMemoryShardStorageTest` | in-memory shards never generate the same message id |
+| `JdbcChatStorageTest` | disjoint H2 identities, self-contained notifications, legacy schema migration |
+| `ChatGrpcServiceTest` | `Deliver`, `SendStatus`, and `LocalHistory` contracts over gRPC |
+| `ChatHttpServerTest` | `POST /status/{user}` and `GET /shards/{user}` over Netty |
+
+### Verified run
+
+- `mvn test`: 93 tests, 0 failures.
+- `docker compose up -d --build`: api + 3 chat + 3 storage + Prometheus all healthy.
+- `GET /shards/{user}` assigned alice to `chat-3`, bob to `chat-1`, and carol to
+  `chat-2`.
+- bob's message was visible in alice's merged history, and alice's SSE stream received
+  bob's live message from another shard.
+- `POST /status/alice` returned three shard reports, four chats, and four deliveries.
+- After restarting `storage-3` and `chat-3`, alice was offline, then reconnected with the
+  same assignment and the full merged history.
+- All seven Prometheus targets were `up`.
+
+### Sharding trade-offs
+
+- Fan-out cost is O(number of shards) per message and per status request.
+- There is no replication inside a shard, so a stopped shard fails the requests whose
+  users it owns; the lab shows the pattern, not high availability.
+- Adding a shard changes `mod N` assignments. A production system would use consistent
+  hashing or a shard directory and migrate the affected users.
+- The input layer has no per-user state, so it can be replicated behind a load balancer
+  without sticky sessions.
 
 ### Performance
 

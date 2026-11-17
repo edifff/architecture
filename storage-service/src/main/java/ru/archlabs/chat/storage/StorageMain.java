@@ -16,13 +16,17 @@ public final class StorageMain {
     public static void main(String[] args) throws Exception {
         int port = intEnv("STORAGE_PORT", 9092);
         int metricsPort = intEnv("STORAGE_METRICS_PORT", 9102);
+        int shardIndex = intEnv("SHARD_INDEX", 0);
+        int shardCount = intEnv("SHARD_COUNT", 1);
+        String shardId = System.getenv().getOrDefault("SHARD_ID", "storage-" + shardIndex);
         String dbUrl =
                 System.getenv()
                         .getOrDefault(
                                 "ARCHLABS_DB_URL",
-                                "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0");
+                                "jdbc:h2:file:/data/chat-" + shardIndex
+                                        + ";DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0");
 
-        JdbcChatStorage storage = new JdbcChatStorage(dbUrl);
+        JdbcChatStorage storage = new JdbcChatStorage(dbUrl, shardIndex, shardCount);
         storage.initialize();
         storage.resetOnlineUsers();
         ChatMetrics metrics = new ChatMetrics();
@@ -42,8 +46,10 @@ public final class StorageMain {
                                     storage.close();
                                 }));
 
-        System.out.println("storage gRPC: localhost:" + port);
-        System.out.println("storage metrics: http://localhost:" + metricsPort + "/metrics");
+        String label = "storage " + shardId + " ";
+        System.out.println(label + "gRPC: localhost:" + port);
+        System.out.println(label + "metrics: http://localhost:" + metricsPort + "/metrics");
+        System.out.println(label + "database: " + dbUrl);
         server.awaitTermination();
     }
 

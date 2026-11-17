@@ -8,6 +8,8 @@ import java.util.function.Consumer;
 
 import ru.archlabs.chat.ChatServer;
 import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.DeliverySummary;
+import ru.archlabs.chat.StatusDispatch;
 import ru.archlabs.chat.domain.ChatNotFoundException;
 import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.domain.Message;
@@ -18,6 +20,7 @@ import ru.archlabs.chat.metrics.ChatMetrics;
  */
 public final class CoreChatGateway implements ChatGateway {
     private static final String NOT_CONNECTED = "User is not connected: ";
+    private static final String LOCAL_SHARD = "local";
 
     private final ChatServer server;
     private final Map<String, ChatSession> sessions = new ConcurrentHashMap<>();
@@ -65,6 +68,28 @@ public final class CoreChatGateway implements ChatGateway {
     @Override
     public AutoCloseable subscribe(String user, Consumer<Message> listener) {
         return session(user).addListener(listener);
+    }
+
+    @Override
+    public StatusReport broadcastStatus(String user, String text) {
+        StatusDispatch dispatch = session(user).broadcastStatus(text);
+        DeliverySummary summary = dispatch.summary();
+        ShardReport report =
+                new ShardReport(
+                        LOCAL_SHARD, summary.chats(), summary.delivered(), summary.queued());
+        return new StatusReport(
+                user,
+                dispatch.message(),
+                1,
+                summary.chats(),
+                summary.delivered(),
+                summary.queued(),
+                List.of(report));
+    }
+
+    @Override
+    public ShardAssignment shardAssignment(String user) {
+        return new ShardAssignment(user, LOCAL_SHARD, 1);
     }
 
     @Override

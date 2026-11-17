@@ -17,6 +17,8 @@ public interface ChatSession extends AutoCloseable {
 
     void setNotificationsEnabled(boolean enabled);
 
+    StatusDispatch broadcastStatus(String text);
+
     /**
      * Registers a notification listener and returns a handle that removes it.
      * Notifications received before a listener is attached are buffered.

@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.StatusDispatch;
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.Message;
 
@@ -48,6 +49,12 @@ final class ChatSessionImpl implements ChatSession {
     public void setNotificationsEnabled(boolean enabled) {
         ensureOpen();
         server.setNotificationsEnabled(this, enabled);
+    }
+
+    @Override
+    public StatusDispatch broadcastStatus(String text) {
+        ensureOpen();
+        return server.sendStatus(this, text);
     }
 
     @Override

@@ -19,9 +19,13 @@ import org.junit.jupiter.api.Test;
 import ru.archlabs.chat.service.ChatServerImpl;
 import ru.archlabs.proto.chat.ChatServiceGrpc;
 import ru.archlabs.proto.chat.ConnectRequest;
+import ru.archlabs.proto.chat.DeliverRequest;
+import ru.archlabs.proto.chat.DeliveryReport;
 import ru.archlabs.proto.chat.HistoryRequest;
+import ru.archlabs.proto.chat.LocalHistoryRequest;
 import ru.archlabs.proto.chat.SendMessageRequest;
 import ru.archlabs.proto.chat.SetNotificationsRequest;
+import ru.archlabs.proto.chat.StatusSendResponse;
 import ru.archlabs.proto.chat.UserRequest;
 import ru.archlabs.proto.common.ChatMessage;
 import ru.archlabs.proto.common.UserState;
@@ -93,6 +97,62 @@ final class ChatGrpcServiceTest {
         ChatMessage message = next.get(5, TimeUnit.SECONDS);
         Assertions.assertEquals("bob", message.getSender());
         Assertions.assertEquals("live", message.getText());
+    }
+
+    @Test
+    void deliversRemoteMessageToLocalSessions() throws Exception {
+        connect("alice");
+        Iterator<ChatMessage> iterator =
+                chat.subscribe(UserRequest.newBuilder().setName("alice").build());
+        CompletableFuture<ChatMessage> next = CompletableFuture.supplyAsync(iterator::next);
+
+        DeliveryReport report =
+                chat.deliver(
+                        DeliverRequest.newBuilder()
+                                .setMessage(
+                                        ChatMessage.newBuilder()
+                                                .setId(55)
+                                                .setSender("bob")
+                                                .setText("remote")
+                                                .setCreatedAtEpochMillis(1)
+                                                .build())
+                                .build());
+
+        Assertions.assertEquals("local", report.getShard());
+        Assertions.assertEquals(1, report.getChats());
+        Assertions.assertEquals(1, report.getDelivered());
+        Assertions.assertEquals("bob", next.get(5, TimeUnit.SECONDS).getSender());
+        Assertions.assertEquals("remote", next.get(5, TimeUnit.SECONDS).getText());
+    }
+
+    @Test
+    void statusReportsEveryLocalChat() {
+        connect("alice");
+        connect("bob");
+
+        StatusSendResponse response =
+                chat.sendStatus(
+                        SendMessageRequest.newBuilder()
+                                .setName("alice")
+                                .setText("maintenance")
+                                .build());
+
+        Assertions.assertEquals("maintenance", response.getMessage().getText());
+        Assertions.assertEquals(2, response.getDelivery().getChats());
+        Assertions.assertEquals(2, response.getDelivery().getDelivered());
+        Assertions.assertEquals(0, response.getDelivery().getQueued());
+    }
+
+    @Test
+    void localHistoryReturnsStoredMessages() {
+        connect("alice");
+        chat.send(
+                SendMessageRequest.newBuilder().setName("alice").setText("stored").build());
+
+        Assertions.assertEquals(
+                1,
+                chat.localHistory(LocalHistoryRequest.newBuilder().setLimit(10).build())
+                        .getMessagesCount());
     }
 
     @Test

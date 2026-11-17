@@ -6,6 +6,8 @@ import java.util.Objects;
 
 import ru.archlabs.chat.ChatServer;
 import ru.archlabs.chat.ChatSession;
+import ru.archlabs.chat.DeliverySummary;
+import ru.archlabs.chat.StatusDispatch;
 import ru.archlabs.chat.domain.ChatConflictException;
 import ru.archlabs.chat.domain.ChatUser;
 import ru.archlabs.chat.domain.ChatValidationException;
@@ -90,13 +92,50 @@ public final class ChatServerImpl implements ChatServer {
     }
 
     Message send(ChatSessionImpl session, String text) {
-        metrics.requestProcessed("send");
+        return dispatch(session, text, "send").message();
+    }
+
+    StatusDispatch sendStatus(ChatSessionImpl session, String text) {
+        return dispatch(session, text, "status");
+    }
+
+    @Override
+    public DeliverySummary deliver(Message message) {
+        Objects.requireNonNull(message, "message");
+        metrics.requestProcessed("deliver");
+        List<ChatSessionImpl> liveSessions;
+        List<String> offlineRecipients;
+        int chats;
+        synchronized (lock) {
+            List<ChatUser> localUsers = users.users();
+            chats = localUsers.size();
+            offlineRecipients =
+                    localUsers.stream()
+                            .filter(user -> !sessions.contains(user.name()))
+                            .map(ChatUser::name)
+                            .toList();
+            for (String recipient : offlineRecipients) {
+                notifications.enqueue(recipient, message);
+            }
+            metrics.notificationStored(offlineRecipients.size());
+            liveSessions = sessions.snapshot();
+        }
+        int delivered = delivery.deliver(liveSessions, message);
+        return new DeliverySummary(chats, delivered, offlineRecipients.size());
+    }
+
+    private StatusDispatch dispatch(ChatSessionImpl session, String text, String operation) {
+        metrics.requestProcessed(operation);
         Message message;
         List<ChatSessionImpl> liveSessions;
+        List<String> offlineRecipients;
+        int chats;
         synchronized (lock) {
             requireActive(session);
-            List<String> offlineRecipients =
-                    users.users().stream()
+            List<ChatUser> localUsers = users.users();
+            chats = localUsers.size();
+            offlineRecipients =
+                    localUsers.stream()
                             .filter(user -> !sessions.contains(user.name()))
                             .map(ChatUser::name)
                             .toList();
@@ -104,8 +143,9 @@ public final class ChatServerImpl implements ChatServer {
             metrics.notificationStored(offlineRecipients.size());
             liveSessions = sessions.snapshot();
         }
-        delivery.deliver(liveSessions, message);
-        return message;
+        int delivered = delivery.deliver(liveSessions, message);
+        return new StatusDispatch(
+                message, new DeliverySummary(chats, delivered, offlineRecipients.size()));
     }
 
     List<Message> history(ChatSessionImpl session, int limit) {

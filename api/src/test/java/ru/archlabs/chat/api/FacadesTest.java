@@ -94,6 +94,30 @@ final class FacadesTest {
     }
 
     @Test
+    void statusFacadeParsesTextAndDelegates() {
+        StatusReport report = facades.status().broadcast("alice", "{\"text\":\"  status  \"}");
+
+        Assertions.assertEquals("alice", gateway.lastUser());
+        Assertions.assertEquals("status", gateway.lastStatusText());
+        Assertions.assertEquals(1, report.chats());
+    }
+
+    @Test
+    void statusFacadeRejectsBlankText() {
+        Assertions.assertThrows(
+                ChatValidationException.class,
+                () -> facades.status().broadcast("alice", "{\"text\":\"   \"}"));
+    }
+
+    @Test
+    void shardFacadeExposesAssignment() {
+        ShardAssignment assignment = facades.shards().find("alice");
+
+        Assertions.assertEquals("alice", assignment.user());
+        Assertions.assertEquals("local", assignment.shard());
+    }
+
+    @Test
     void sendReturnsCreatedMessageRecord() {
         Message message = facades.messages().send("alice", "{\"text\":\"hello\"}");
 

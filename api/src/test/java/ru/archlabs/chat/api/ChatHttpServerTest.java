@@ -124,6 +124,33 @@ final class ChatHttpServerTest {
     }
 
     @Test
+    void statusIsAppliedToEveryChatAndAggregated() throws Exception {
+        post("/sessions/alice", "");
+        post("/sessions/bob", "");
+
+        HttpResponse<String> response = post("/status/alice", "{\"text\":\"maintenance\"}");
+
+        Assertions.assertEquals(200, response.statusCode());
+        StatusReport report = ChatJson.read(response.body(), StatusReport.class);
+        Assertions.assertEquals("maintenance", report.message().text());
+        Assertions.assertEquals(2, report.chats());
+        Assertions.assertEquals(2, report.delivered());
+        Assertions.assertEquals(1, report.shardCount());
+        Assertions.assertEquals(1, report.shards().size());
+    }
+
+    @Test
+    void exposesTheDeterministicShardAssignment() throws Exception {
+        HttpResponse<String> response = get("/shards/alice");
+
+        Assertions.assertEquals(200, response.statusCode());
+        ShardAssignment assignment = ChatJson.read(response.body(), ShardAssignment.class);
+        Assertions.assertEquals("alice", assignment.user());
+        Assertions.assertEquals("local", assignment.shard());
+        Assertions.assertEquals(1, assignment.shardCount());
+    }
+
+    @Test
     void eventsStreamDeliversSentMessage() throws Exception {
         post("/sessions/alice", "");
         HttpRequest events =

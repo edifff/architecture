@@ -18,6 +18,8 @@ public final class ChatMain {
     public static void main(String[] args) throws Exception {
         int port = intEnv("CHAT_PORT", 9091);
         int metricsPort = intEnv("CHAT_METRICS_PORT", 9101);
+        int shardIndex = intEnv("SHARD_INDEX", 0);
+        String shardId = System.getenv().getOrDefault("SHARD_ID", "chat-" + shardIndex);
         String storageHost = System.getenv().getOrDefault("STORAGE_HOST", "localhost");
         int storagePort = intEnv("STORAGE_PORT", 9092);
 
@@ -27,7 +29,7 @@ public final class ChatMain {
         ChatServerImpl server = new ChatServerImpl(storage);
         Server grpc =
                 ServerBuilder.forPort(port)
-                        .addService(new ChatGrpcService(server))
+                        .addService(new ChatGrpcService(server, shardId))
                         .build()
                         .start();
         MetricsHttpServer metricsServer = new MetricsHttpServer(server.metrics(), metricsPort);
@@ -42,9 +44,10 @@ public final class ChatMain {
                                     channel.shutdownNow();
                                 }));
 
-        System.out.println("chat gRPC: localhost:" + port);
-        System.out.println("chat metrics: http://localhost:" + metricsPort + "/metrics");
-        System.out.println("storage target: " + storageHost + ":" + storagePort);
+        String label = "chat " + shardId + " ";
+        System.out.println(label + "gRPC: localhost:" + port);
+        System.out.println(label + "metrics: http://localhost:" + metricsPort + "/metrics");
+        System.out.println(label + "storage target: " + storageHost + ":" + storagePort);
         grpc.awaitTermination();
     }
 

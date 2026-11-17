@@ -16,6 +16,8 @@ public interface ChatServer extends AutoCloseable {
 
     List<Message> history(int limit);
 
+    DeliverySummary deliver(Message message);
+
     ChatMetrics metrics();
 
     @Override

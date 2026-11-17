@@ -26,8 +26,22 @@ public final class InMemoryChatStorage implements ChatStorage {
     private final CopyOnWriteArrayList<Message> messages = new CopyOnWriteArrayList<>();
     private final Map<String, CopyOnWriteArrayList<Notification>> notifications =
             new ConcurrentHashMap<>();
-    private final AtomicLong messageIds = new AtomicLong();
-    private final AtomicLong notificationIds = new AtomicLong();
+    private final long shardCount;
+    private final AtomicLong messageIds;
+    private final AtomicLong notificationIds;
+
+    public InMemoryChatStorage() {
+        this(0, 1);
+    }
+
+    public InMemoryChatStorage(int shardIndex, int shardCount) {
+        if (shardCount < 1 || shardIndex < 0 || shardIndex >= shardCount) {
+            throw new IllegalArgumentException("Invalid shard index/count");
+        }
+        this.shardCount = shardCount;
+        messageIds = new AtomicLong((long) shardIndex + 1 - shardCount);
+        notificationIds = new AtomicLong((long) shardIndex + 1 - shardCount);
+    }
 
     @Override
     public void initialize() {
@@ -87,7 +101,7 @@ public final class InMemoryChatStorage implements ChatStorage {
 
         Message message;
         synchronized (this) {
-            message = new Message(messageIds.incrementAndGet(), author, body, at);
+            message = new Message(messageIds.addAndGet(shardCount), author, body, at);
             messages.add(message);
             for (String recipient : notificationRecipients) {
                 enqueueNotification(recipient, message, at);
@@ -112,7 +126,7 @@ public final class InMemoryChatStorage implements ChatStorage {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(at, AT);
         Notification notification =
-                new Notification(notificationIds.incrementAndGet(), target, message, at);
+                new Notification(notificationIds.addAndGet(shardCount), target, message, at);
         notifications
                 .computeIfAbsent(target, ignored -> new CopyOnWriteArrayList<>())
                 .add(notification);

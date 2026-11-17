@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
 
     <name>arch-labs</name>
-    <description>Chat labs: in-memory, embedded storage, Netty IP interface, Docker, layered gRPC</description>
+    <description>Chat labs: in-memory, embedded storage, Netty IP interface, Docker, layered gRPC, sharding</description>
 
     <modules>
         <module>proto</module>

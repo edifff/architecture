@@ -21,9 +21,11 @@ import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.ChatMetrics;
 import ru.archlabs.proto.chat.ChatServiceGrpc;
 import ru.archlabs.proto.chat.ConnectRequest;
+import ru.archlabs.proto.chat.DeliveryReport;
 import ru.archlabs.proto.chat.HistoryRequest;
 import ru.archlabs.proto.chat.SendMessageRequest;
 import ru.archlabs.proto.chat.SetNotificationsRequest;
+import ru.archlabs.proto.chat.StatusSendResponse;
 import ru.archlabs.proto.chat.UserRequest;
 import ru.archlabs.proto.common.ChatMessage;
 import ru.archlabs.proto.common.UserState;
@@ -155,6 +157,41 @@ public final class GrpcChatGateway implements ChatGateway {
                 stream.cancel("client closed", null);
             }
         };
+    }
+
+    @Override
+    public StatusReport broadcastStatus(String user, String text) {
+        metrics.requestProcessed("api_status");
+        try {
+            StatusSendResponse response =
+                    blocking.sendStatus(
+                            SendMessageRequest.newBuilder()
+                                    .setName(user)
+                                    .setText(text)
+                                    .build());
+            DeliveryReport delivery = response.getDelivery();
+            ShardReport report =
+                    new ShardReport(
+                            delivery.getShard(),
+                            delivery.getChats(),
+                            delivery.getDelivered(),
+                            delivery.getQueued());
+            return new StatusReport(
+                    user,
+                    map(response.getMessage()),
+                    1,
+                    delivery.getChats(),
+                    delivery.getDelivered(),
+                    delivery.getQueued(),
+                    List.of(report));
+        } catch (StatusRuntimeException exception) {
+            throw map(exception);
+        }
+    }
+
+    @Override
+    public ShardAssignment shardAssignment(String user) {
+        return new ShardAssignment(user, "chat", 1);
     }
 
     @Override
