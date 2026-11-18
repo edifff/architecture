@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Small HTTP load client for the lab 5 api container.
+ * Small HTTP load client for the api container.
  */
 public final class HttpLoadClient {
     private HttpLoadClient() {

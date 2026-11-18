@@ -163,95 +163,6 @@ services:
       storage-3:
         condition: service_healthy
 
-  storage-single:
-    profiles:
-      - single
-    build:
-      context: .
-      args:
-        MODULE: storage-service
-    image: arch-labs-storage:dev
-    environment:
-      ARCHLABS_DB_URL: "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
-      STORAGE_PORT: "9092"
-      STORAGE_METRICS_PORT: "9102"
-      HEALTH_PORT: "9102"
-      SHARD_INDEX: "0"
-      SHARD_COUNT: "1"
-      SHARD_ID: "storage-single"
-    ports:
-      - "9190:9092"
-      - "9114:9102"
-    volumes:
-      - chat-data:/data
-    restart: unless-stopped
-
-  chat-single:
-    profiles:
-      - single
-    build:
-      context: .
-      args:
-        MODULE: chat-service
-    image: arch-labs-chat-service:dev
-    environment:
-      STORAGE_HOST: storage-single
-      STORAGE_PORT: "9092"
-      CHAT_PORT: "9091"
-      CHAT_METRICS_PORT: "9101"
-      HEALTH_PORT: "9101"
-      SHARD_INDEX: "0"
-      SHARD_ID: "chat-single"
-    ports:
-      - "9089:9091"
-      - "9109:9101"
-    depends_on:
-      storage-single:
-        condition: service_healthy
-    restart: unless-stopped
-
-  api-single:
-    profiles:
-      - single
-    build:
-      context: .
-      args:
-        MODULE: api
-    image: arch-labs-api:dev
-    environment:
-      CHAT_HOST: chat-single
-      CHAT_PORT: "9091"
-      ARCHLABS_HTTP_PORT: "8085"
-      ARCHLABS_METRICS_PORT: "9105"
-      HEALTH_PORT: "9105"
-    ports:
-      - "8085:8085"
-      - "9105:9105"
-    depends_on:
-      chat-single:
-        condition: service_healthy
-    restart: unless-stopped
-
-  app:
-    profiles:
-      - monolith
-    build:
-      context: .
-      args:
-        MODULE: app
-    image: arch-labs-chat:dev
-    environment:
-      ARCHLABS_DB_URL: "jdbc:h2:file:/data/chat;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
-      ARCHLABS_HTTP_PORT: "8080"
-      ARCHLABS_METRICS_PORT: "9100"
-      HEALTH_PORT: "9100"
-    ports:
-      - "8081:8080"
-      - "9110:9100"
-    volumes:
-      - app-data:/data
-    restart: unless-stopped
-
   tests:
     build:
       context: .
@@ -264,6 +175,4 @@ volumes:
   storage-1-data:
   storage-2-data:
   storage-3-data:
-  chat-data:
-  app-data:
   prometheus-data:

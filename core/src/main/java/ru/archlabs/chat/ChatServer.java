@@ -7,7 +7,7 @@ import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
- * In-process chat façade used by lab 1 and by the local (non-gRPC) runner.
+ * In-process chat façade used by tests and by the local API adapter.
  */
 public interface ChatServer extends AutoCloseable {
     ChatSession connect(String userName);

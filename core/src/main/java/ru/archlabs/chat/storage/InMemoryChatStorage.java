@@ -17,7 +17,7 @@ import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.domain.Notification;
 
 /**
- * Thread-safe RAM storage used by lab 1.
+ * Thread-safe RAM storage used by tests and by the local API adapter.
  */
 public final class InMemoryChatStorage implements ChatStorage {
     private static final String AT = "at";
