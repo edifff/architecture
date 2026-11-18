@@ -5,8 +5,14 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -22,6 +28,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import ru.archlabs.chat.chat.ChatGrpcService;
+import ru.archlabs.chat.domain.ChatConflictException;
+import ru.archlabs.chat.domain.ChatInternalException;
 import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.ChatMetrics;
 import ru.archlabs.chat.service.ChatServerImpl;
@@ -162,6 +170,106 @@ final class ShardedChatGatewayTest {
         Assertions.assertNotNull(message);
         Assertions.assertEquals("offline status", message.text());
         subscription.close();
+    }
+
+    @Test
+    void handlesMoreConcurrentUsersThanCoresAcrossShards() throws Exception {
+        int users = stressThreads();
+        int perUser = 2;
+        ExecutorService pool = Executors.newFixedThreadPool(users);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<?>> futures = new ArrayList<Future<?>>();
+            for (int index = 0; index < users; index++) {
+                int worker = index;
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    String user = "stress-" + worker;
+                                    gateway.connect(user);
+                                    for (int message = 0; message < perUser; message++) {
+                                        gateway.send(
+                                                user, "m-" + worker + "-" + message);
+                                    }
+                                    return null;
+                                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(120, TimeUnit.SECONDS);
+            }
+
+            int expected = users * perUser;
+            List<Message> history = gateway.history("stress-0", expected + 10);
+            Assertions.assertEquals(expected, history.size());
+            Set<Long> ids = new HashSet<Long>();
+            Set<String> usedShards = new HashSet<String>();
+            for (int index = 0; index < users; index++) {
+                usedShards.add(gateway.shardAssignment("stress-" + index).shard());
+            }
+            for (Message message : history) {
+                ids.add(message.id());
+            }
+            Assertions.assertEquals(expected, ids.size());
+            Assertions.assertTrue(usedShards.size() > 1, "Stress users must hit several shards");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentDuplicateConnectBeyondCoreCountCreatesOneSession() throws Exception {
+        int threads = stressThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<String>> futures = new ArrayList<Future<String>>();
+            for (int index = 0; index < threads; index++) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    try {
+                                        gateway.connect("race-user");
+                                        return "ok";
+                                    } catch (ChatConflictException expected) {
+                                        return "rejected";
+                                    }
+                                }));
+            }
+            start.countDown();
+
+            int accepted = 0;
+            for (Future<String> future : futures) {
+                if ("ok".equals(future.get(60, TimeUnit.SECONDS))) {
+                    accepted++;
+                }
+            }
+            Assertions.assertEquals(1, accepted);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void failsWhenOneShardIsUnavailable() throws Exception {
+        gateway.connect("bob");
+        Server dead = servers.get(2);
+        dead.shutdownNow();
+        Assertions.assertTrue(dead.awaitTermination(5, TimeUnit.SECONDS));
+
+        Assertions.assertTrue(gateway.user("bob").online());
+        Assertions.assertThrows(
+                ChatInternalException.class,
+                () -> gateway.broadcastStatus("bob", "degraded"));
+        Assertions.assertThrows(ChatInternalException.class, () -> gateway.history("bob", 10));
+        Assertions.assertTrue(gateway.user("bob").online());
+    }
+
+    private static int stressThreads() {
+        // More workers than cores force real context switching.
+        return Runtime.getRuntime().availableProcessors() + 4;
     }
 
     private static final class TickingClock extends Clock {

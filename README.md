@@ -68,6 +68,8 @@ The demo prints delivered messages and starts Prometheus metrics on
   Prometheus text endpoint.
 - Concurrency tests cover duplicate simultaneous logins and 8 threads sending 320
   messages without loss or duplicate ids.
+- The stress tests use `availableProcessors() + 4` workers. The worker count is always
+  greater than the core count, so the scheduler must switch between blocked senders.
 
 The contract test is reusable: lab 2 runs the same behavior against the embedded
 database.
@@ -204,7 +206,7 @@ docker compose --profile test run --rm tests
 
 The separate test container runs the full reactor with no Docker-in-Docker dependency
 because the storage tests use embedded H2. The Docker test run was verified to pass the
-full suite (93 tests after lab 6).
+full suite (105 tests after lab 6).
 
 ### Persistence check
 
@@ -422,9 +424,43 @@ curl -s 'http://localhost:8080/messages/alice?limit=10'
 | `ChatGrpcServiceTest` | `Deliver`, `SendStatus`, and `LocalHistory` contracts over gRPC |
 | `ChatHttpServerTest` | `POST /status/{user}` and `GET /shards/{user}` over Netty |
 
+### Concurrency and failure tests
+
+Every concurrency layer now has a stress test with
+`Runtime.getRuntime().availableProcessors() + 4` workers. On this machine that is 20
+threads against 16 cores; the count is derived at runtime, so it is greater than the
+core count on any host.
+
+| Layer | Test | Contention / failure |
+| --- | --- | --- |
+| Core | `concurrentSendsBeyondCoreCountKeepEveryMessage` | more senders than cores; every message and id is retained |
+| Core | `concurrentConnectBeyondCoreCountAllowsExactlyOneSession` | many simultaneous logins for one user; exactly one wins |
+| Storage | `concurrentFirstConnectsBeyondCoreCountAreSafe` | many simultaneous first-time `connect` calls on one H2 row |
+| Storage | `concurrentAppendsBeyondCoreCountKeepIdsUnique` | parallel H2 transactions, unique identity values |
+| Chat gRPC | `concurrentSendsBeyondCoreCountKeepEveryMessage` | concurrent `Send` calls plus one live subscriber |
+| API | `handlesMoreConcurrentClientsThanCores` | more Netty clients than cores, merged history verified |
+| API | `concurrentDuplicateConnectsBeyondCoreCountCreateOneSession` | HTTP race on one user: one `201`, the rest `409` |
+| Sharding | `handlesMoreConcurrentUsersThanCoresAcrossShards` | concurrent users across all three shards and cross-shard delivery |
+| Sharding | `concurrentDuplicateConnectBeyondCoreCountCreatesOneSession` | race on the shard-selected user |
+| Sharding | `failsWhenOneShardIsUnavailable` | one shard is stopped; general calls fail fast, single-shard reads still work |
+
+Two real races were exposed and fixed by these tests:
+
+- H2 `connect` used `UPDATE` followed by `INSERT`, so simultaneous first-time connects
+  could violate the primary key. It now uses `MERGE INTO users ... KEY(name)`, which
+  preserves the notification preference for existing users.
+- gRPC server-stream observers are not thread-safe. Concurrent sends could call
+  `onNext` from several threads, so the subscription listener now serializes stream
+  writes.
+
+The unavailable-shard test deliberately breaks the system: `POST /status/{user}` and
+merged history raise `ChatInternalException` when any shard is down, while
+`GET /users/{user}` for a user on a live shard still succeeds. That is the expected
+fail-fast behaviour without replication.
+
 ### Verified run
 
-- `mvn test`: 93 tests, 0 failures.
+- `mvn test`: 105 tests, 0 failures.
 - `docker compose up -d --build`: api + 3 chat + 3 storage + Prometheus all healthy.
 - `GET /shards/{user}` assigned alice to `chat-3`, bob to `chat-1`, and carol to
   `chat-2`.

@@ -8,7 +8,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
@@ -151,6 +158,88 @@ final class ChatHttpServerTest {
     }
 
     @Test
+    void handlesMoreConcurrentClientsThanCores() throws Exception {
+        int users = stressThreads();
+        int perUser = 3;
+        ExecutorService pool = Executors.newFixedThreadPool(users);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<?>> futures = new ArrayList<Future<?>>();
+            for (int index = 0; index < users; index++) {
+                int worker = index;
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    String user = "stress-" + worker;
+                                    Assertions.assertEquals(201, post("/sessions/" + user, "").statusCode());
+                                    for (int message = 0; message < perUser; message++) {
+                                        Assertions.assertEquals(
+                                                201,
+                                                post(
+                                                                "/messages/" + user,
+                                                                "{\"text\":\"m-" + worker + "-"
+                                                                        + message + "\"}")
+                                                        .statusCode());
+                                    }
+                                    return null;
+                                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(120, TimeUnit.SECONDS);
+            }
+
+            HttpResponse<String> response = get("/messages/stress-0?limit=1000");
+            Assertions.assertEquals(200, response.statusCode());
+            Message[] history = ChatJson.read(response.body(), Message[].class);
+            int expected = users * perUser;
+            Assertions.assertEquals(expected, history.length);
+            Set<Long> ids = new HashSet<Long>();
+            for (Message message : history) {
+                ids.add(message.id());
+            }
+            Assertions.assertEquals(expected, ids.size());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentDuplicateConnectsBeyondCoreCountCreateOneSession() throws Exception {
+        int threads = stressThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<Integer>> futures = new ArrayList<Future<Integer>>();
+            for (int index = 0; index < threads; index++) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    return post("/sessions/race", "").statusCode();
+                                }));
+            }
+            start.countDown();
+
+            int accepted = 0;
+            int rejected = 0;
+            for (Future<Integer> future : futures) {
+                int status = future.get(60, TimeUnit.SECONDS);
+                if (status == 201) {
+                    accepted++;
+                } else if (status == 409) {
+                    rejected++;
+                }
+            }
+            Assertions.assertEquals(1, accepted);
+            Assertions.assertEquals(threads - 1, rejected);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void eventsStreamDeliversSentMessage() throws Exception {
         post("/sessions/alice", "");
         HttpRequest events =
@@ -230,5 +319,10 @@ final class ChatHttpServerTest {
 
     private String error(HttpResponse<String> response) {
         return ChatJson.read(response.body(), ErrorPayload.class).error();
+    }
+
+    private static int stressThreads() {
+        // More workers than cores force real context switching.
+        return Runtime.getRuntime().availableProcessors() + 4;
     }
 }

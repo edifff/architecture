@@ -40,6 +40,11 @@ final class PersistentChatServerTest extends ChatServerContractTest {
         return 10;
     }
 
+    @Override
+    int stressMessagesPerSender() {
+        return 1;
+    }
+
     @Test
     void normalRestartKeepsStateAndBufferedNotifications() throws Exception {
         ChatServerImpl first = new ChatServerImpl(new JdbcChatStorage(url()));

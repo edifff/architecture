@@ -4,7 +4,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -275,12 +277,93 @@ abstract class ChatServerContractTest {
         }
     }
 
+    @Test
+    void concurrentSendsBeyondCoreCountKeepEveryMessage() throws Exception {
+        int senders = stressThreads();
+        int perSender = stressMessagesPerSender();
+        ExecutorService pool = Executors.newFixedThreadPool(senders);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<ChatSession> sessions = new ArrayList<ChatSession>();
+            for (int index = 0; index < senders; index++) {
+                sessions.add(server().connect("stress-" + index));
+            }
+            ArrayList<Future<List<Long>>> futures = new ArrayList<Future<List<Long>>>();
+            for (ChatSession session : sessions) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    ArrayList<Long> ids = new ArrayList<Long>();
+                                    for (int index = 0; index < perSender; index++) {
+                                        ids.add(session.send(session.userName()).id());
+                                    }
+                                    return ids;
+                                }));
+            }
+            start.countDown();
+
+            Set<Long> ids = new HashSet<Long>();
+            for (Future<List<Long>> future : futures) {
+                ids.addAll(future.get(120, TimeUnit.SECONDS));
+            }
+            int expected = senders * perSender;
+            Assertions.assertEquals(expected, ids.size());
+            Assertions.assertEquals(expected, server().history(expected + 10).size());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentConnectBeyondCoreCountAllowsExactlyOneSession() throws Exception {
+        int threads = stressThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<String>> futures = new ArrayList<Future<String>>();
+            for (int index = 0; index < threads; index++) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    try {
+                                        server().connect("stress-race");
+                                        return "ok";
+                                    } catch (ChatConflictException expected) {
+                                        return "rejected";
+                                    }
+                                }));
+            }
+            start.countDown();
+
+            int accepted = 0;
+            for (Future<String> future : futures) {
+                if ("ok".equals(future.get(60, TimeUnit.SECONDS))) {
+                    accepted++;
+                }
+            }
+            Assertions.assertEquals(1, accepted);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     int concurrentSenders() {
         return 8;
     }
 
     int messagesPerSender() {
         return 40;
+    }
+
+    int stressMessagesPerSender() {
+        return 5;
+    }
+
+    int stressThreads() {
+        // More workers than cores force real context switching.
+        return Runtime.getRuntime().availableProcessors() + 4;
     }
 
     private String attemptConnect(CyclicBarrier barrier) throws Exception {

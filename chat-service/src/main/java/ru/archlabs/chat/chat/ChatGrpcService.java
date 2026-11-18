@@ -145,8 +145,12 @@ public final class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
             AutoCloseable subscription =
                     session.addListener(
                             message -> {
-                                if (!observer.isCancelled()) {
-                                    observer.onNext(ChatProtoMapper.toProto(message));
+                                // gRPC stream observers are not thread-safe; concurrent
+                                // sends may reach this listener from several threads.
+                                synchronized (observer) {
+                                    if (!observer.isCancelled()) {
+                                        observer.onNext(ChatProtoMapper.toProto(message));
+                                    }
                                 }
                             });
             observer.setOnCancelHandler(() -> closeQuietly(subscription));

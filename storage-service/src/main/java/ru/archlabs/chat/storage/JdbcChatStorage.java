@@ -67,7 +67,7 @@ public final class JdbcChatStorage implements ChatStorage {
                     CREATE TABLE IF NOT EXISTS users (
                         name VARCHAR(64) PRIMARY KEY,
                         online BOOLEAN NOT NULL,
-                        notifications_enabled BOOLEAN NOT NULL,
+                        notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                         last_seen BIGINT NOT NULL
                     )
                     """);
@@ -101,7 +101,7 @@ public final class JdbcChatStorage implements ChatStorage {
         } catch (SQLException exception) {
             throw new StorageException("Cannot initialize H2 storage", exception);
         }
-        migrateNotifications();
+        migrateSchema();
     }
 
     @Override
@@ -109,23 +109,13 @@ public final class JdbcChatStorage implements ChatStorage {
         String user = requireName(name);
         Objects.requireNonNull(at, AT);
         try (Connection connection = open();
-                PreparedStatement update =
+                PreparedStatement statement =
                         connection.prepareStatement(
-                                "UPDATE users SET online = TRUE, last_seen = ? WHERE name = ?")) {
-            update.setLong(1, at.toEpochMilli());
-            update.setString(2, user);
-            if (update.executeUpdate() == 0) {
-                try (PreparedStatement insert =
-                        connection.prepareStatement(
-                                """
-                                INSERT INTO users(name, online, notifications_enabled, last_seen)
-                                VALUES (?, TRUE, TRUE, ?)
-                                """)) {
-                    insert.setString(1, user);
-                    insert.setLong(2, at.toEpochMilli());
-                    insert.executeUpdate();
-                }
-            }
+                                "MERGE INTO users(name, online, last_seen) KEY(name) "
+                                        + "VALUES (?, TRUE, ?)")) {
+            statement.setString(1, user);
+            statement.setLong(2, at.toEpochMilli());
+            statement.executeUpdate();
         } catch (SQLException exception) {
             throw new StorageException("Cannot connect user " + user, exception);
         }
@@ -324,9 +314,11 @@ public final class JdbcChatStorage implements ChatStorage {
         }
     }
 
-    private void migrateNotifications() {
+    private void migrateSchema() {
         try (Connection connection = open();
                 Statement statement = connection.createStatement()) {
+            statement.execute(
+                    "ALTER TABLE users ALTER COLUMN notifications_enabled SET DEFAULT TRUE");
             statement.execute(
                     "ALTER TABLE notifications DROP CONSTRAINT IF EXISTS fk_notifications_message");
             statement.execute(

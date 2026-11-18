@@ -5,7 +5,15 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -126,6 +134,89 @@ final class JdbcChatStorageTest {
         Notification notification = storage.pendingNotifications("alice").getFirst();
         Assertions.assertEquals("bob", notification.message().sender());
         Assertions.assertEquals("legacy", notification.message().text());
+    }
+
+    @Test
+    void concurrentFirstConnectsBeyondCoreCountAreSafe() throws Exception {
+        Instant at = Instant.parse("2026-01-01T00:00:00Z");
+        JdbcChatStorage storage = new JdbcChatStorage(url());
+        storage.initialize();
+        int threads = stressThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<?>> futures = new ArrayList<Future<?>>();
+            for (int index = 0; index < threads; index++) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    storage.connect("race", at);
+                                    return null;
+                                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(60, TimeUnit.SECONDS);
+            }
+
+            Assertions.assertTrue(storage.findUser("race").orElseThrow().online());
+            storage.setNotificationsEnabled("race", false);
+            storage.connect("race", at);
+            Assertions.assertFalse(
+                    storage.findUser("race").orElseThrow().notificationsEnabled());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentAppendsBeyondCoreCountKeepIdsUnique() throws Exception {
+        Instant at = Instant.parse("2026-01-01T00:00:00Z");
+        JdbcChatStorage storage = new JdbcChatStorage(url());
+        storage.initialize();
+        int threads = stressThreads();
+        int perThread = 2;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            ArrayList<Future<List<Long>>> futures = new ArrayList<Future<List<Long>>>();
+            for (int index = 0; index < threads; index++) {
+                int worker = index;
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    ArrayList<Long> ids = new ArrayList<Long>();
+                                    for (int message = 0; message < perThread; message++) {
+                                        ids.add(
+                                                storage.appendMessage(
+                                                                "user-" + worker,
+                                                                "m-" + worker + "-" + message,
+                                                                List.of(),
+                                                                at)
+                                                        .id());
+                                    }
+                                    return ids;
+                                }));
+            }
+            start.countDown();
+
+            Set<Long> ids = new HashSet<Long>();
+            for (Future<List<Long>> future : futures) {
+                ids.addAll(future.get(120, TimeUnit.SECONDS));
+            }
+            int expected = threads * perThread;
+            Assertions.assertEquals(expected, ids.size());
+            Assertions.assertEquals(expected, storage.history(expected + 10).size());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private static int stressThreads() {
+        // More workers than cores force real context switching.
+        return Runtime.getRuntime().availableProcessors() + 4;
     }
 
     private String url() {
