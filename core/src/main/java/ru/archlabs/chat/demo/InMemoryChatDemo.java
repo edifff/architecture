@@ -5,7 +5,7 @@ import ru.archlabs.chat.metrics.MetricsHttpServer;
 import ru.archlabs.chat.service.ChatServerImpl;
 
 /**
- * Lab 1 demo: two users in one JVM, communicating through the Java interface only.
+ *  two users in one JVM, communicating through the Java interface only.
  */
 public final class InMemoryChatDemo {
     private InMemoryChatDemo() {

@@ -9,7 +9,6 @@ import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
  * Boundary between the HTTP input element and the chat implementation.
- * Lab 3 supplies an in-process implementation; lab 5 supplies a gRPC one; lab 6
  * supplies a shard-routing and aggregating one.
  */
 public interface ChatGateway extends AutoCloseable {

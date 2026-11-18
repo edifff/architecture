@@ -16,7 +16,7 @@ import ru.archlabs.chat.domain.Message;
 import ru.archlabs.chat.metrics.ChatMetrics;
 
 /**
- * Lab 3 gateway: calls the in-process domain directly.
+ *  calls the in-process domain directly.
  */
 public final class CoreChatGateway implements ChatGateway {
     private static final String NOT_CONNECTED = "User is not connected: ";

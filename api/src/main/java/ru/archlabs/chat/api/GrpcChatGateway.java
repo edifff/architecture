@@ -31,7 +31,7 @@ import ru.archlabs.proto.common.ChatMessage;
 import ru.archlabs.proto.common.UserState;
 
 /**
- * Lab 5 gateway: the input layer talks to the domain layer over gRPC.
+ *  the input layer talks to the domain layer over gRPC.
  */
 public final class GrpcChatGateway implements ChatGateway {
     private final ManagedChannel channel;

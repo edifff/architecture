@@ -9,7 +9,7 @@ import ru.archlabs.chat.metrics.MetricsHttpServer;
 import ru.archlabs.chat.service.ChatServerImpl;
 
 /**
- * Lab 2 demo. The H2 URL can be overridden with ARCHLABS_DB_URL.
+ *  The H2 URL can be overridden with ARCHLABS_DB_URL.
  */
 public final class PersistentChatDemo {
     private static final String ALICE = "alice";
